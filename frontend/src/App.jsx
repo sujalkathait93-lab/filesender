@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick } from 'lucide-react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import UploadPage from './pages/Upload'
 import DownloadPage from './pages/Download'
 import './App.css'
@@ -27,6 +28,7 @@ function App() {
 
   return (
     <div className="app">
+      <SpeedInsights />
       <div className="ambient-blobs">
         <div className="blob blob-1"></div>
         <div className="blob blob-2"></div>
