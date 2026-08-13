@@ -5,6 +5,11 @@
 
 const MAGIC_HEADER = [83, 69, 67, 86, 65, 85, 76, 84, 118, 49]; // "SECVAULTv1"
 
+// Browsers choke on canvases wider than ~5000px (memory + max dimension limits).
+// 5000px wide at 4:3 is ~26.7M pixels, enough for roughly a 10 MB payload.
+const MAX_COVER_WIDTH = 5000;
+const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024;
+
 /**
  * Auto-generate a beautiful dark space artwork cover image on canvas
  */
@@ -55,7 +60,7 @@ export function createDefaultCoverCanvas(width = 600, height = 400) {
   // Vault badge watermark text
   ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
   ctx.font = '600 14px monospace';
-  ctx.fillText('🔒 SECURESHARE STEGANO VAULT', 20, height - 20);
+  ctx.fillText('SECURESHARE STEGANO VAULT', 20, height - 20);
 
   return canvas;
 }
@@ -90,6 +95,14 @@ export async function embedPayloadInImage(coverImageFile, payloadBytes) {
     const pixelsNeeded = Math.ceil((totalBytesNeeded * 8) / 3) + 5000;
     // For 4:3 aspect ratio: width * (0.75 * width) >= pixelsNeeded => width >= sqrt(pixelsNeeded / 0.75)
     const width = Math.max(800, Math.ceil(Math.sqrt(pixelsNeeded / 0.75)));
+
+    if (payloadBytes.length > MAX_PAYLOAD_BYTES || width > MAX_COVER_WIDTH) {
+      throw new Error(
+        'Payload too large for the steganographic image vault (max ~10 MB). ' +
+        'Upload it as a regular encrypted file instead - encryption is identical.'
+      );
+    }
+
     const height = Math.ceil(width * 0.75);
     imgCanvas = createDefaultCoverCanvas(width, height);
   }

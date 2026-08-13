@@ -5,6 +5,9 @@ import { QRCodeSVG } from 'qrcode.react'
 import { encryptFile, createTransferCode, formatBytes, copyToClipboard } from '../crypto'
 import { embedPayloadInImage } from '../steganography'
 
+// Payloads above this size cannot be hidden inside an image (canvas limits).
+const STEGO_MAX_PAYLOAD_BYTES = 10 * 1024 * 1024;
+
 function UploadPage({ serverUrl }) {
   const navigate = useNavigate();
   const [file, setFile] = useState(null);
@@ -15,6 +18,7 @@ function UploadPage({ serverUrl }) {
   const [shareUrl, setShareUrl] = useState('');
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [stegoSkipped, setStegoSkipped] = useState(false);
 
   // Vault options
   const [useSteganography, setUseSteganography] = useState(true);
@@ -44,6 +48,7 @@ function UploadPage({ serverUrl }) {
       setFile(droppedFile);
       setResult(null);
       setError(null);
+      setStegoSkipped(false);
     }
   }, []);
 
@@ -53,6 +58,7 @@ function UploadPage({ serverUrl }) {
       setFile(selectedFile);
       setResult(null);
       setError(null);
+      setStegoSkipped(false);
     }
     e.target.value = '';
   };
@@ -72,10 +78,19 @@ function UploadPage({ serverUrl }) {
 
       if (useSteganography) {
         setProgress({ stage: 'steganography', percent: 75 });
-        const payloadArrayBuffer = await encrypted.encryptedBlob.arrayBuffer();
-        const payloadBytes = new Uint8Array(payloadArrayBuffer);
-        uploadBlob = await embedPayloadInImage(null, payloadBytes);
-        uploadFileName = 'vault_' + Date.now() + '.png';
+        if (encrypted.encryptedSize > STEGO_MAX_PAYLOAD_BYTES) {
+          setStegoSkipped(true);
+        } else {
+          try {
+            const payloadArrayBuffer = await encrypted.encryptedBlob.arrayBuffer();
+            const payloadBytes = new Uint8Array(payloadArrayBuffer);
+            uploadBlob = await embedPayloadInImage(null, payloadBytes);
+            uploadFileName = 'vault_' + Date.now() + '.png';
+          } catch (stegoErr) {
+            console.warn('Steganography skipped:', stegoErr.message);
+            setStegoSkipped(true);
+          }
+        }
       }
 
       setProgress({ stage: 'uploading', percent: 88 });
@@ -156,6 +171,7 @@ function UploadPage({ serverUrl }) {
     setProgress(null);
     setIsProcessing(false);
     setCopied(false);
+    setStegoSkipped(false);
   };
 
   const getStageLabel = (stage) => {
@@ -326,6 +342,14 @@ function UploadPage({ serverUrl }) {
             <Check size={18} />
             Your file was encrypted and securely stored. Send the code below to the recipient.
           </div>
+
+          {stegoSkipped && (
+            <div className="status-message info">
+              <Info size={18} />
+              This file was too large to hide inside an image, so it was stored as a plain encrypted file. The
+              AES-256-GCM encryption is exactly the same.
+            </div>
+          )}
 
           <div className="file-meta" style={{ marginTop: '1rem' }}>
             <div className="meta-item">

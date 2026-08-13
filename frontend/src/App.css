@@ -1482,3 +1482,190 @@ code, pre {
   white-space: pre-wrap;
 }
 
+/* ------------------------------------------------------------------ */
+/* Mobile-first refinements, safe areas and touch ergonomics          */
+/* ------------------------------------------------------------------ */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+}
+
+/* Smallest mobile viewports (iPhone SE, etc.) */
+@media (max-width: 380px) {
+  .nav-brand {
+    font-size: 1rem;
+  }
+  .nav-brand .logo-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .hero-pill {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .hero h1 {
+    font-size: 1.9rem;
+  }
+  .hero .subtitle {
+    font-size: 1rem;
+  }
+}
+
+/* Respect notched-phone safe areas */
+.navbar {
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-left: max(2rem, env(safe-area-inset-left));
+  padding-right: max(2rem, env(safe-area-inset-right));
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding-top: max(0.9rem, env(safe-area-inset-top));
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+  }
+}
+
+.main-content {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+
+/* Minimum 44px touch targets for thumbs */
+.btn {
+  min-height: 44px;
+}
+
+.mobile-menu-drawer a {
+  min-height: 48px;
+}
+
+.wizard-steps .step-num {
+  min-width: 28px;
+}
+
+/* Buttons and controls should not trigger double-tap zoom */
+input,
+select,
+button,
+a,
+label,
+.drop-zone {
+  touch-action: manipulation;
+}
+
+/* QR code scales down on small screens instead of overflowing */
+.qr-code-wrapper svg {
+  width: 100%;
+  height: auto;
+  max-width: 190px;
+}
+
+/* File metadata labels wrap gracefully on narrow screens */
+.meta-item span {
+  word-break: break-word;
+}
+
+/* Preview modal becomes a full-screen sheet on phones */
+@media (max-width: 600px) {
+  .preview-overlay {
+    padding: 0;
+  }
+  .preview-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    height: 100vh;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .preview-body {
+    padding: 1rem;
+  }
+  .preview-footer {
+    padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+  }
+  .preview-footer .btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* Compact stacking for very small phones */
+@media (max-width: 480px) {
+  .hero {
+    margin: 1.25rem auto 2.5rem;
+  }
+  .cta-buttons {
+    margin-bottom: 2.5rem;
+  }
+  .bento-card {
+    padding: 1.5rem;
+  }
+  .step-card {
+    padding: 1.4rem 1rem;
+  }
+  .page-container {
+    padding: 0 0.15rem;
+  }
+  .page-header {
+    margin-bottom: 1.75rem;
+  }
+  .action-row {
+    flex-direction: column;
+  }
+  .action-row .btn {
+    flex: 1 1 100% !important;
+    width: 100%;
+  }
+  .file-info-header {
+    flex-wrap: wrap;
+  }
+  .file-info-header .btn {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+  .wizard-steps {
+    gap: 0.4rem;
+  }
+  .status-message {
+    flex-wrap: wrap;
+  }
+  .progress-text {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  .progress-details {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .crypto-code-box {
+    padding: 1rem;
+  }
+  .crypto-code-text {
+    font-size: 0.78rem;
+    padding: 0.7rem;
+  }
+  .share-section h3 {
+    font-size: 1.15rem;
+  }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

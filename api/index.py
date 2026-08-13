@@ -375,7 +375,7 @@ def get_file_info(file_id):
         "download_count": row["download_count"],
         "max_downloads": row["max_downloads"],
         "compressed": bool(row["compressed"]),
-        "burn_on_read": bool(row["burn_on_read"] if "burn_on_read" in row.keys() else 0),
+        "burn_on_read": bool(row["burn_on_read"]),
         "iv": row["iv"],
         "salt": row["salt"]
     })
@@ -415,7 +415,7 @@ def download_file(file_id):
     if not os.path.exists(file_path):
         return jsonify({"detail": "File data missing"}), 404
 
-    is_burn = (not preview) and (bool(row["burn_on_read"] if "burn_on_read" in row.keys() else 0) or (new_count >= row["max_downloads"]))
+    is_burn = (not preview) and (bool(row["burn_on_read"]) or (new_count >= row["max_downloads"]))
 
     def generate():
         try:
@@ -430,6 +430,8 @@ def download_file(file_id):
     safe_filename = urllib.parse.quote(row["filename"])
 
     response = Response(generate(), mimetype="application/octet-stream")
+    # Explicit Content-Length so clients can render accurate download progress bars
+    response.headers["Content-Length"] = str(row["encrypted_size"])
     response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_filename}"
     response.headers["X-Original-Name"] = safe_orig_name
     response.headers["X-Compressed"] = str(row["compressed"])
