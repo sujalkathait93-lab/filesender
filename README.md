@@ -1,5 +1,7 @@
 # SecureShare
 
+[![Pull Shark](https://raw.githubusercontent.com/Schweinepriester/github-profile-achievements/main/images/pull-shark-default.png)](https://github.com/sujalkathait93-lab?tab=achievements)
+
 **End-to-end encrypted file sharing with zero-knowledge storage, LSB steganographic vaults, and WebRTC peer-to-peer transfer.**
 
 SecureShare is a private file-sharing web application. Files are compressed and encrypted inside the browser with AES-256-GCM before they ever leave the device. The encrypted payload can optionally be hidden inside the pixels of a PNG image (steganography), and the recipient receives a single share code that contains both the file ID and the decryption key. The server only ever stores ciphertext and metadata - it can never read a file.
