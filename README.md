@@ -216,7 +216,7 @@ flowchart LR
 
 ## Deep Dive: How the Core Technology Works
 
-Here is a simple explanation of the three main engines that power SecureShare:
+Here is a simple explanation of the three main engines that power SecureShare, explained with real-world examples:
 
 ---
 
@@ -225,54 +225,71 @@ Here is a simple explanation of the three main engines that power SecureShare:
 > **Think of it like a bank vault with a custom digital lock.**
 
 #### What is AES-256-GCM?
-- **AES (Advanced Encryption Standard)** is the gold-standard security algorithm used by governments and banks worldwide.
-- **256-bit** means there are $2^{256}$ possible lock combinations. That number has 78 digits—more than all the atoms in the universe. Even the fastest supercomputers would need billions of years to guess it.
-- **GCM (Galois/Counter Mode)** adds an automatic tamper check. If anyone changes even a single bit of your file during transit, the decryption fails immediately, preventing corrupted or altered files.
+- **AES (Advanced Encryption Standard)** is the gold-standard security lock used by governments and banks.
+- **256-bit** means there are $2^{256}$ possible combinations. That number is larger than the number of all atoms in the universe. Guessing it is impossible.
+- **GCM (Galois/Counter Mode)** adds an automatic "tamper-proof seal" to your file. If anyone tries to modify even one letter of your locked file while it is sent, the vault notices and refuses to open, keeping you safe from hackers.
 
 #### What is PBKDF2?
-- **PBKDF2 (Password-Based Key Derivation Function 2)** takes your short secret code and strengthens it.
-- It runs your password through **100,000 rounds** of mathematical hashing along with a random 16-byte "salt" (random numbers).
-- This makes it impossible for attackers to use pre-computed word lists (called rainbow tables) or rapid automated guessing tools.
+- **PBKDF2** is a password generator. It takes your short password (like `secret`) and turns it into a massive, super-strong key by mixing it with a random number (called a **salt**) and shaking it mathematically **100,000 times**. This makes it impossible for automated systems to guess it.
 
-#### Why Client-Side in the Browser?
-- Using the browser's built-in `window.crypto.subtle` engine, the encryption happens **on your computer before the file is uploaded**.
-- The server only ever receives scrambled bytes. It never sees your plain file, your password, or your keys.
+#### Practical Example:
+Imagine you want to lock the secret word: `"hello"`.
+1. **Password**: You select a simple password, like `myPassword`.
+2. **PBKDF2 Key Strengthening**: Your browser takes `myPassword`, adds a random salt like `x9y2z7`, and hashes it 100,000 times to create a massive, secure key: `f5a8c901e...`.
+3. **AES-256 Encryption**: Your browser uses that key to lock `"hello"`.
+   - **Input**: `"hello"`
+   - **Output (Ciphertext)**: `x8#q2!9%` (looks like random garbage characters).
+   - This scrambled `x8#q2!9%` is the only thing that leaves your computer.
 
 ---
 
 ### 2. Steganography: HTML5 Canvas API (Pixel Color Channels)
 
-> **Think of it like writing a secret letter in invisible ink on the back of a painting.**
+> **Think of it like writing a secret message in invisible ink on the back of an art painting.**
 
 #### What is Steganography?
-- While cryptography scrambles a message so nobody can *read* it, steganography hides a message so nobody can *see* that a secret message even exists.
+- Cryptography scrambles your message so nobody can *read* it.
+- Steganography hides your message so nobody can *see* that you are sending anything at all.
 
-#### How Does HTML5 Canvas Hide Data in Pixels?
-1. Every digital image is a grid of tiny color dots called **pixels**.
-2. Each pixel is made up of 3 color channels: **Red (R)**, **Green (G)**, and **Blue (B)**.
-3. Each color channel has a value between `0` and `255` (stored as an 8-digit binary number, like `11001000`).
-4. SecureShare uses the **HTML5 Canvas API** (`getImageData` and `putImageData`) to access the raw pixel colors of an artwork image.
-5. It replaces only the very last bit (**Least Significant Bit, or LSB**) of each color channel with a piece of your encrypted file.
+#### How does it hide data in images?
+1. Every digital picture is a grid of tiny color dots called **pixels**.
+2. Each pixel is made of 3 color channels: **Red**, **Green**, and **Blue** (RGB).
+3. Each color can have a brightness level from `0` (totally dark) to `255` (fully bright).
+4. SecureShare uses the **HTML5 Canvas API** to read these color values, convert them to binary numbers, and hide your encrypted file inside the very last digit of the color numbers.
 
-#### Why is it Invisible to Human Eyes?
-- Changing the last bit only changes a color value by $\pm 1$ (for example, Red changes from `200` to `201`).
-- This is a color shift of less than **0.4%**, which is completely undetectable to the human eye.
-- To any person or automated filter, the file looks like an ordinary, harmless PNG artwork image.
+#### Practical Example:
+Imagine we have a pixel that is bright red.
+- **Original Color Values**: Red: `200`, Green: `100`, Blue: `50`.
+- Let's look at the Red value `200` in computer binary: `11001000`.
+- We want to hide a single bit of our secret file: `1`.
+- We replace the very last digit of the Red binary number with our secret bit `1`:
+  - **Old Binary**: `11001000` (value 200)
+  - **New Binary**: `11001001` (value 201)
+- The Red value changes slightly from `200` to `201`.
+- Because the change is so small (less than 0.4%), **no human eye can see the difference**. The picture looks exactly the same, but the computer can read the pixels, check the last digits, and pull out your secret file!
 
 ---
 
 ### 3. Networking: WebRTC + Socket.IO (Direct P2P Transfer)
 
-> **Think of it like making a direct phone call instead of sending mail through the post office.**
+> **Think of it like introducing two people at a party so they can talk directly to each other, instead of passing letters through a third person.**
 
-#### The Problem with Regular File Sharing:
-- Normally, when you send a file, you upload it to a server, and your friend downloads it from that server.
-- This takes twice as long and leaves a copy of your file on the company's hard drive.
+#### The Problem:
+- Usually, when you share a file, you upload it to a server (like Google Drive or Dropbox), and the receiver downloads it from that server.
+- This is slow and copies your personal data onto a stranger's server.
 
-#### How SecureShare Uses WebRTC & Socket.IO:
-1. **Socket.IO acts as the Matchmaker**: When you and your friend open the room code, the lightweight Python signaling server introduces your two browsers to each other.
-2. **WebRTC establishes the Direct Line**: Once introduced, the two browsers use **WebRTC DataChannels** to build a direct, encrypted, browser-to-browser tunnel.
-3. **Unlimited Speed & Zero Storage**: The file stream travels directly from your computer's memory to your friend's computer over your local network or internet. The file never touches the server disk at all.
+#### How SecureShare fixes this:
+1. **Socket.IO (The Matchmaker)**: When you share your code, the backend server acts as a matchmaker. It connects your browser and your friend's browser so they can exchange details.
+2. **WebRTC (The Direct Line)**: Once introduced, the two browsers connect directly to each other using a technology called **RTCPeerConnection**.
+3. **P2P Data Transfer**: A direct channel is built between both computers. The file is streamed straight from your memory to your friend's memory over the internet.
+
+#### Practical Example:
+Imagine you want to send a large 500MB video to your friend sitting in the same room.
+1. Your browser tells the signaling server: *"I have a file ready at room code 123."*
+2. Your friend types the code `123`. The signaling server tells both browsers how to find each other.
+3. The server steps away.
+4. Your browser sends the video chunks directly across your local Wi-Fi router to your friend's browser.
+5. The video transfers in seconds, never reaches the internet server, and leaves **zero** traces on any storage disk.
 
 ---
 
