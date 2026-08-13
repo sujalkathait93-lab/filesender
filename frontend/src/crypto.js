@@ -203,15 +203,6 @@ export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onPro
 }
 
 /**
- * Create share URL with full crypto code as query parameter or path parameter
- */
-export function createShareUrl(fileId, password, serverUrl) {
-  const base = serverUrl || window.location.origin;
-  const code = createTransferCode(fileId, password);
-  return `${base}/download?code=${encodeURIComponent(code)}`;
-}
-
-/**
  * Extract key from URL fragment or query parameter
  */
 export function extractKeyFromUrl() {
@@ -246,7 +237,7 @@ export function parseTransferCode(input) {
   if (!input) return { fileId: null, key: null };
   let str = input.trim();
 
-  // Extract from full URL if pasted (e.g. http://localhost:5173/download?code=SEC-12345678-ABCDEF12 or http://localhost:5173/download/SEC-12345678-ABCDEF12)
+  // Extract from full URL if pasted
   if (str.startsWith('http://') || str.startsWith('https://')) {
     try {
       const url = new URL(str);
@@ -285,7 +276,7 @@ export function parseTransferCode(input) {
  * Format bytes to human readable
  */
 export function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0 || !bytes) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -298,3 +289,4 @@ export function formatBytes(bytes) {
 export async function copyToClipboard(text) {
   await navigator.clipboard.writeText(text);
 }
+

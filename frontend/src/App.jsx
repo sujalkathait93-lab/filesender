@@ -7,7 +7,6 @@ import './App.css'
 
 function App() {
   const [serverOnline, setServerOnline] = useState(null);
-  const [serverUrl, setServerUrl] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
@@ -98,8 +97,8 @@ function App() {
       <main className="main-content">
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/upload" element={<UploadPage serverUrl={serverUrl} />} />
-          <Route path="/download/:fileId?" element={<DownloadPage serverUrl={serverUrl} />} />
+          <Route path="/upload" element={<UploadPage />} />
+          <Route path="/download/:fileId?" element={<DownloadPage />} />
         </Routes>
       </main>
     </div>

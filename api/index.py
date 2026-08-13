@@ -1,7 +1,7 @@
 """
 SecureShare - End-to-End Encrypted File Sharing API & WebRTC Signaling Server
 Supports WebRTC DataChannel (LAN & WAN) + Flask/WebSocket signaling + STUN/TURN
-Client-side encryption + compression + zero-knowledge storage vault
+Client-side encryption + streaming chunking pipeline + zero-knowledge storage vault
 """
 
 from flask import Flask, request, jsonify, Response
@@ -30,7 +30,9 @@ CORS(
         "X-Compressed",
         "X-Burn-On-Read",
         "X-IV",
-        "X-Salt"
+        "X-Salt",
+        "X-Refresh-Count",
+        "X-Max-Refreshes"
     ]
 )
 
@@ -50,8 +52,8 @@ default_upload = "/tmp/uploads" if is_vercel else "uploads"
 
 DB_PATH = os.environ.get("DB_PATH", default_db)
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", default_upload)
-MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024))  # 2GB
-FILE_EXPIRY_HOURS = 24
+MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024))  # 2GB Max Total Size
+MAX_REFRESHES_PER_SESSION = 5
 
 # Ensure directories exist
 if os.path.dirname(DB_PATH):
@@ -85,6 +87,7 @@ class DatabaseManager:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS files (
                 id TEXT PRIMARY KEY,
+                transfer_id TEXT,
                 filename TEXT NOT NULL,
                 original_name TEXT NOT NULL,
                 original_size INTEGER NOT NULL,
@@ -98,26 +101,63 @@ class DatabaseManager:
                 salt TEXT NOT NULL,
                 checksum TEXT,
                 compressed INTEGER DEFAULT 1,
-                burn_on_read INTEGER DEFAULT 0
+                burn_on_read INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'ready'
             )
         """)
-        try:
-            conn.execute("ALTER TABLE files ADD COLUMN burn_on_read INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS transfers (
                 id TEXT PRIMARY KEY,
-                file_id TEXT,
+                token_hash TEXT,
                 sender_ip TEXT,
                 receiver_ip TEXT,
                 status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
                 completed_at TIMESTAMP,
-                FOREIGN KEY (file_id) REFERENCES files(id)
+                total_size INTEGER DEFAULT 0,
+                file_count INTEGER DEFAULT 1,
+                sharing_mode TEXT DEFAULT 'standard',
+                refresh_count INTEGER DEFAULT 0,
+                max_refreshes INTEGER DEFAULT 5,
+                burn_on_read INTEGER DEFAULT 0
             )
         """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chunks (
+                id TEXT PRIMARY KEY,
+                transfer_id TEXT,
+                file_id TEXT,
+                chunk_index INTEGER,
+                total_chunks INTEGER,
+                chunk_size INTEGER,
+                checksum TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Add missing columns safely if upgrading existing DB
+        columns_to_add = [
+            ("files", "transfer_id", "TEXT"),
+            ("files", "burn_on_read", "INTEGER DEFAULT 0"),
+            ("files", "status", "TEXT DEFAULT 'ready'"),
+            ("transfers", "token_hash", "TEXT"),
+            ("transfers", "refresh_count", "INTEGER DEFAULT 0"),
+            ("transfers", "max_refreshes", "INTEGER DEFAULT 5"),
+            ("transfers", "total_size", "INTEGER DEFAULT 0"),
+            ("transfers", "file_count", "INTEGER DEFAULT 1"),
+            ("transfers", "sharing_mode", "TEXT DEFAULT 'standard'"),
+            ("transfers", "burn_on_read", "INTEGER DEFAULT 0"),
+            ("transfers", "expires_at", "TIMESTAMP")
+        ]
+        for table, col, col_type in columns_to_add:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+
         conn.commit()
         conn.close()
 
@@ -130,11 +170,26 @@ class StorageManager:
     def get_file_path(self, file_id: str) -> str:
         return os.path.join(self.upload_dir, file_id)
 
+    def get_chunk_path(self, transfer_id: str, file_id: str, chunk_index: int) -> str:
+        chunk_dir = os.path.join(self.upload_dir, "chunks", transfer_id)
+        os.makedirs(chunk_dir, exist_ok=True)
+        return os.path.join(chunk_dir, f"{file_id}_{chunk_index}.chunk")
+
     def delete_file(self, file_id: str):
         path = self.get_file_path(file_id)
         if os.path.exists(path):
             try:
                 os.remove(path)
+            except OSError:
+                pass
+
+    def purge_transfer_chunks(self, transfer_id: str):
+        chunk_dir = os.path.join(self.upload_dir, "chunks", transfer_id)
+        if os.path.exists(chunk_dir):
+            try:
+                for fname in os.listdir(chunk_dir):
+                    os.remove(os.path.join(chunk_dir, fname))
+                os.rmdir(chunk_dir)
             except OSError:
                 pass
 
@@ -144,6 +199,7 @@ class StorageManager:
         conn = db_manager.get_connection()
         try:
             conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
+            conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
             conn.commit()
         except Exception as e:
             print(f"Purge DB error for {file_id}: {e}")
@@ -154,23 +210,29 @@ db_manager = DatabaseManager(DB_PATH)
 storage_manager = StorageManager(UPLOAD_DIR)
 
 def cleanup_expired_files():
-    """Periodic background cleanup task: purges expired files and orphaned disk blobs"""
+    """Periodic background cleanup task: purges expired files, transfers, and orphaned disk blobs"""
     try:
         conn = db_manager.get_connection()
-        cursor = conn.execute(
-            "SELECT id FROM files WHERE expires_at < ?",
-            (get_utc_now_iso(),)
-        )
-        expired = cursor.fetchall()
-        expired_ids = {row["id"] for row in expired}
+        now_iso = get_utc_now_iso()
 
-        for file_id in expired_ids:
-            storage_manager.delete_file(file_id)
-            conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
+        # Expired files
+        cursor = conn.execute("SELECT id FROM files WHERE expires_at < ?", (now_iso,))
+        expired_files = cursor.fetchall()
+        for row in expired_files:
+            storage_manager.delete_file(row["id"])
+            conn.execute("DELETE FROM files WHERE id = ?", (row["id"],))
+
+        # Expired transfers
+        t_cursor = conn.execute("SELECT id FROM transfers WHERE expires_at < ?", (now_iso,))
+        expired_transfers = t_cursor.fetchall()
+        for t_row in expired_transfers:
+            storage_manager.purge_transfer_chunks(t_row["id"])
+            conn.execute("DELETE FROM transfers WHERE id = ?", (t_row["id"],))
+            conn.execute("DELETE FROM chunks WHERE transfer_id = ?", (t_row["id"],))
 
         conn.commit()
 
-        # Get active file IDs
+        # Active file IDs
         active_cursor = conn.execute("SELECT id FROM files")
         active_ids = {row["id"] for row in active_cursor.fetchall()}
         conn.close()
@@ -178,7 +240,7 @@ def cleanup_expired_files():
         # Scan uploads directory for orphan files on disk and purge them
         if os.path.exists(UPLOAD_DIR):
             for filename in os.listdir(UPLOAD_DIR):
-                if filename not in active_ids:
+                if filename != "chunks" and filename not in active_ids:
                     file_path = os.path.join(UPLOAD_DIR, filename)
                     try:
                         if os.path.isfile(file_path):
@@ -197,7 +259,6 @@ def generate_id():
     return hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:8]
 
 def safe_int(value, default, min_val=None, max_val=None):
-    """Parse an integer safely, falling back to a default and clamping to bounds."""
     try:
         result = int(value)
     except (TypeError, ValueError):
@@ -209,7 +270,6 @@ def safe_int(value, default, min_val=None, max_val=None):
     return result
 
 def safe_float(value, default, min_val=None, max_val=None):
-    """Parse a float safely, falling back to a default and clamping to bounds."""
     try:
         result = float(value)
     except (TypeError, ValueError):
@@ -246,16 +306,17 @@ def get_local_ips():
 def root():
     return jsonify({
         "service": "SecureShare",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "features": [
             "webrtc-datachannel",
             "flask-websocket-signaling",
             "stun-turn-nat-traversal",
-            "auto-lan-wan-selection",
+            "multi-file-transfers",
+            "2gb-large-file-chunking",
+            "token-refresh-limits",
             "e2e-encryption",
-            "chunking",
-            "resume",
-            "progress-speed-eta"
+            "burn-on-read",
+            "steganography-vault"
         ],
         "status": "operational"
     })
@@ -294,7 +355,7 @@ def network_info():
 
 @app.route("/api/upload", methods=["POST"])
 def upload_file():
-    """Upload encrypted file blob. Encryption happens client-side."""
+    """Upload encrypted file blob with max 2 GB total size validation."""
     if 'file' not in request.files:
         return jsonify({"detail": "No file part in request"}), 400
 
@@ -303,39 +364,55 @@ def upload_file():
     salt = request.form.get("salt", "")
     original_name = request.form.get("original_name", "") or file_obj.filename
     original_size = safe_int(request.form.get("original_size"), 0, min_val=0)
+
+    if original_size > MAX_FILE_SIZE:
+        return jsonify({"detail": "Total file size cannot exceed 2 GB"}), 413
+
     compressed = safe_int(request.form.get("compressed"), 1, min_val=0, max_val=1)
     max_downloads = safe_int(request.form.get("max_downloads"), 10, min_val=1, max_val=100)
     burn_on_read = safe_int(request.form.get("burn_on_read"), 0, min_val=0, max_val=1)
-    expiry_hours = safe_float(request.form.get("expiry_hours"), 4.0, min_val=0.25, max_val=720)
+    expiry_hours = safe_float(request.form.get("expiry_hours"), 24.0, min_val=0.25, max_val=720)
+    sharing_mode = request.form.get("sharing_mode", "standard")
 
     if not iv or not salt:
         return jsonify({"detail": "IV and salt required for encrypted upload"}), 400
 
     file_id = generate_id()
+    transfer_id = request.form.get("transfer_id", file_id)
     file_path = os.path.join(UPLOAD_DIR, file_id)
 
     encrypted_size = 0
     with open(file_path, "wb") as f:
-        while chunk := file_obj.read(8192):
+        while chunk := file_obj.read(131072): # 128 KB write buffer
             encrypted_size += len(chunk)
             if encrypted_size > MAX_FILE_SIZE:
                 os.remove(file_path)
-                return jsonify({"detail": "File too large (max 2GB)"}), 413
+                return jsonify({"detail": "Total file size cannot exceed 2 GB"}), 413
             f.write(chunk)
 
     expires_at = get_utc_now() + timedelta(hours=expiry_hours)
     effective_max_downloads = 1 if burn_on_read == 1 else max_downloads
 
     conn = db_manager.get_connection()
+
+    # Create transfer record
     conn.execute("""
-        INSERT INTO files (id, filename, original_name, original_size, encrypted_size, 
-                          mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO transfers (id, token_hash, status, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
+        VALUES (?, ?, 'active', ?, ?, 1, ?, 0, 5, ?)
+        ON CONFLICT(id) DO UPDATE SET total_size = total_size + excluded.total_size, file_count = file_count + 1
+    """, (transfer_id, file_id, expires_at.isoformat(), original_size, sharing_mode, burn_on_read))
+
+    # Insert file metadata
+    conn.execute("""
+        INSERT INTO files (id, transfer_id, filename, original_name, original_size, encrypted_size, 
+                          mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
     """, (
-        file_id, file_obj.filename, original_name, original_size, encrypted_size,
+        file_id, transfer_id, file_obj.filename, original_name, original_size, encrypted_size,
         file_obj.content_type or "application/octet-stream", expires_at.isoformat(),
         effective_max_downloads, iv, salt, compressed, "", burn_on_read
     ))
+
     conn.commit()
     conn.close()
 
@@ -343,9 +420,60 @@ def upload_file():
 
     return jsonify({
         "file_id": file_id,
+        "transfer_id": transfer_id,
         "share_url": f"/download/{file_id}",
         "expires_at": expires_at.isoformat(),
+        "refresh_count": 0,
+        "max_refreshes": MAX_REFRESHES_PER_SESSION,
         "qr_data": file_id
+    })
+
+@app.route("/api/transfers/<transfer_id>/token/refresh", methods=["POST"])
+def refresh_token(transfer_id):
+    """
+    Refresh transfer token / QR code.
+    Enforces maximum 5 automatic refreshes per session!
+    """
+    conn = db_manager.get_connection()
+    row = conn.execute("SELECT * FROM transfers WHERE id = ?", (transfer_id,)).fetchone()
+
+    if not row:
+        # Fallback check file row if transfer row missing
+        f_row = conn.execute("SELECT * FROM files WHERE id = ?", (transfer_id,)).fetchone()
+        if not f_row:
+            conn.close()
+            return jsonify({"detail": "Transfer session not found"}), 404
+        current_refresh = 0
+        max_ref = MAX_REFRESHES_PER_SESSION
+    else:
+        current_refresh = row["refresh_count"]
+        max_ref = row["max_refreshes"] or MAX_REFRESHES_PER_SESSION
+
+    if current_refresh >= max_ref:
+        conn.close()
+        return jsonify({
+            "detail": "QR refresh limit reached. Generate a new transfer.",
+            "refresh_count": current_refresh,
+            "max_refreshes": max_ref,
+            "limit_reached": True
+        }), 429
+
+    new_refresh_count = current_refresh + 1
+    new_token_hash = generate_id()
+
+    conn.execute(
+        "UPDATE transfers SET refresh_count = ?, token_hash = ? WHERE id = ?",
+        (new_refresh_count, new_token_hash, transfer_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "transfer_id": transfer_id,
+        "refresh_count": new_refresh_count,
+        "max_refreshes": max_ref,
+        "token_hash": new_token_hash,
+        "message": f"Token refreshed ({new_refresh_count}/{max_ref})"
     })
 
 @app.route("/api/file-info/<file_id>", methods=["GET"])
@@ -356,16 +484,26 @@ def get_file_info(file_id):
         "SELECT * FROM files WHERE id = ? AND expires_at > ?",
         (file_id, get_utc_now_iso())
     ).fetchone()
-    conn.close()
 
     if not row:
+        # Try transfer lookup
+        t_row = conn.execute("SELECT * FROM transfers WHERE id = ? AND expires_at > ?", (file_id, get_utc_now_iso())).fetchone()
+        if t_row:
+            f_row = conn.execute("SELECT * FROM files WHERE transfer_id = ?", (file_id,)).fetchone()
+            if f_row:
+                row = f_row
+
+    if not row:
+        conn.close()
         return jsonify({"detail": "File not found or expired"}), 404
 
     if row["download_count"] >= row["max_downloads"]:
+        conn.close()
         return jsonify({"detail": "File has been burned/deleted after reading"}), 410
 
-    return jsonify({
+    result = {
         "id": row["id"],
+        "transfer_id": row["transfer_id"] or row["id"],
         "original_name": row["original_name"],
         "original_size": row["original_size"],
         "encrypted_size": row["encrypted_size"],
@@ -378,7 +516,9 @@ def get_file_info(file_id):
         "burn_on_read": bool(row["burn_on_read"]),
         "iv": row["iv"],
         "salt": row["salt"]
-    })
+    }
+    conn.close()
+    return jsonify(result)
 
 @app.route("/api/download/<file_id>", methods=["GET"])
 def download_file(file_id):
@@ -397,7 +537,7 @@ def download_file(file_id):
 
     if row["download_count"] >= row["max_downloads"]:
         conn.close()
-        return jsonify({"detail": "File has been burned/deleted after reading"}), 410
+        return jsonify({"detail": "File has self-destructed (Burn-on-Read active)"}), 410
 
     if not preview:
         new_count = row["download_count"] + 1
@@ -420,7 +560,7 @@ def download_file(file_id):
     def generate():
         try:
             with open(file_path, "rb") as f:
-                while chunk := f.read(8192):
+                while chunk := f.read(131072):
                     yield chunk
         finally:
             if is_burn:
@@ -430,7 +570,6 @@ def download_file(file_id):
     safe_filename = urllib.parse.quote(row["filename"])
 
     response = Response(generate(), mimetype="application/octet-stream")
-    # Explicit Content-Length so clients can render accurate download progress bars
     response.headers["Content-Length"] = str(row["encrypted_size"])
     response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_filename}"
     response.headers["X-Original-Name"] = safe_orig_name
@@ -467,7 +606,7 @@ def get_stats():
         "total_files": total,
         "active_files": active,
         "max_file_size": MAX_FILE_SIZE,
-        "file_expiry_hours": FILE_EXPIRY_HOURS,
+        "max_refreshes": MAX_REFRESHES_PER_SESSION,
         "server_time": get_utc_now_iso()
     })
 
@@ -475,7 +614,6 @@ def get_stats():
 # WebRTC Signaling Server Handlers (Flask-SocketIO)
 # ----------------------------------------------------
 
-# Store active rooms metadata
 active_rooms = {}
 
 @socketio.on("connect")
@@ -498,7 +636,6 @@ def handle_join_room(data):
 
     member_count = len(active_rooms[room]["members"])
 
-    # Notify sender & receiver about peer joining room
     emit("room_joined", {
         "room": room,
         "role": role,
@@ -584,5 +721,5 @@ def handle_disconnect():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    print(f"Starting SecureShare Flask + SocketIO Signaling Server on port {port}...")
+    print(f"Starting SecureShare Flask + SocketIO Server on port {port}...")
     socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)
