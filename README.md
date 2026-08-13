@@ -20,6 +20,10 @@ SecureShare is a private file sharing web application. It locks files directly i
   - [4. How Data is Hidden Inside an Image](#4-how-data-is-hidden-inside-an-image)
 - [Key Features Explained Simply](#key-features-explained-simply)
 - [Technologies Used](#technologies-used)
+- [Deep Dive: How the Core Technology Works](#deep-dive-how-the-core-technology-works)
+  - [1. Cryptography (AES-256-GCM + PBKDF2)](#1-cryptography-web-crypto-api-aes-256-gcm--pbkdf2)
+  - [2. Steganography (HTML5 Canvas LSB)](#2-steganography-html5-canvas-api-pixel-color-channels)
+  - [3. Networking (WebRTC + Socket.IO)](#3-networking-webrtc--socketio-direct-p2p-transfer)
 - [Project Folder Structure](#project-folder-structure)
 - [How to Run on Your Computer](#how-to-run-on-your-computer)
 - [API Reference](#api-reference)
@@ -207,6 +211,68 @@ flowchart LR
 | **Cryptography** | Web Crypto API (AES-256-GCM + PBKDF2) | Client-side encryption and decryption |
 | **Steganography** | HTML5 Canvas API | Reads and writes hidden data into pixel color channels |
 | **Networking** | WebRTC + Socket.IO | Direct peer-to-peer data transfers |
+
+---
+
+## Deep Dive: How the Core Technology Works
+
+Here is a simple explanation of the three main engines that power SecureShare:
+
+---
+
+### 1. Cryptography: Web Crypto API (AES-256-GCM + PBKDF2)
+
+> **Think of it like a bank vault with a custom digital lock.**
+
+#### What is AES-256-GCM?
+- **AES (Advanced Encryption Standard)** is the gold-standard security algorithm used by governments and banks worldwide.
+- **256-bit** means there are $2^{256}$ possible lock combinations. That number has 78 digits—more than all the atoms in the universe. Even the fastest supercomputers would need billions of years to guess it.
+- **GCM (Galois/Counter Mode)** adds an automatic tamper check. If anyone changes even a single bit of your file during transit, the decryption fails immediately, preventing corrupted or altered files.
+
+#### What is PBKDF2?
+- **PBKDF2 (Password-Based Key Derivation Function 2)** takes your short secret code and strengthens it.
+- It runs your password through **100,000 rounds** of mathematical hashing along with a random 16-byte "salt" (random numbers).
+- This makes it impossible for attackers to use pre-computed word lists (called rainbow tables) or rapid automated guessing tools.
+
+#### Why Client-Side in the Browser?
+- Using the browser's built-in `window.crypto.subtle` engine, the encryption happens **on your computer before the file is uploaded**.
+- The server only ever receives scrambled bytes. It never sees your plain file, your password, or your keys.
+
+---
+
+### 2. Steganography: HTML5 Canvas API (Pixel Color Channels)
+
+> **Think of it like writing a secret letter in invisible ink on the back of a painting.**
+
+#### What is Steganography?
+- While cryptography scrambles a message so nobody can *read* it, steganography hides a message so nobody can *see* that a secret message even exists.
+
+#### How Does HTML5 Canvas Hide Data in Pixels?
+1. Every digital image is a grid of tiny color dots called **pixels**.
+2. Each pixel is made up of 3 color channels: **Red (R)**, **Green (G)**, and **Blue (B)**.
+3. Each color channel has a value between `0` and `255` (stored as an 8-digit binary number, like `11001000`).
+4. SecureShare uses the **HTML5 Canvas API** (`getImageData` and `putImageData`) to access the raw pixel colors of an artwork image.
+5. It replaces only the very last bit (**Least Significant Bit, or LSB**) of each color channel with a piece of your encrypted file.
+
+#### Why is it Invisible to Human Eyes?
+- Changing the last bit only changes a color value by $\pm 1$ (for example, Red changes from `200` to `201`).
+- This is a color shift of less than **0.4%**, which is completely undetectable to the human eye.
+- To any person or automated filter, the file looks like an ordinary, harmless PNG artwork image.
+
+---
+
+### 3. Networking: WebRTC + Socket.IO (Direct P2P Transfer)
+
+> **Think of it like making a direct phone call instead of sending mail through the post office.**
+
+#### The Problem with Regular File Sharing:
+- Normally, when you send a file, you upload it to a server, and your friend downloads it from that server.
+- This takes twice as long and leaves a copy of your file on the company's hard drive.
+
+#### How SecureShare Uses WebRTC & Socket.IO:
+1. **Socket.IO acts as the Matchmaker**: When you and your friend open the room code, the lightweight Python signaling server introduces your two browsers to each other.
+2. **WebRTC establishes the Direct Line**: Once introduced, the two browsers use **WebRTC DataChannels** to build a direct, encrypted, browser-to-browser tunnel.
+3. **Unlimited Speed & Zero Storage**: The file stream travels directly from your computer's memory to your friend's computer over your local network or internet. The file never touches the server disk at all.
 
 ---
 
