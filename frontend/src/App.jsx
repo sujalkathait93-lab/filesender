@@ -74,6 +74,14 @@ function App() {
       {/* Mobile Drawer */}
       {mobileOpen && (
         <div className="mobile-menu-drawer animate-in">
+          <div className="mobile-network-status">
+            <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
+              <div className="network-dot"></div>
+              <span>
+                {serverOnline === null ? 'Checking server...' : serverOnline ? 'Server Online' : 'Server Offline'}
+              </span>
+            </div>
+          </div>
           <Link to="/" className={navLinkClass('/')} onClick={() => setMobileOpen(false)}>
             <Zap size={18} /> Home
           </Link>
