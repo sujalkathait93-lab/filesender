@@ -477,7 +477,7 @@ function DownloadPage({ serverUrl }) {
         </div>
       )}
 
-      {isBurned && (
+      {isBurned && !success && (
         <div className="burn-banner" style={{ background: 'rgba(220, 38, 38, 0.2)', borderColor: '#ef4444', marginTop: '1.25rem' }}>
           <Flame size={24} style={{ color: '#ef4444' }} />
           <div>

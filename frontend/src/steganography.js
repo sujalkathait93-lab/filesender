@@ -196,10 +196,10 @@ export async function extractPayloadFromImage(imageFileOrBlob) {
   }
 
   // Read payload length (4 bytes)
-  const payloadLen = (headerBuffer[10] << 24) |
-                     (headerBuffer[11] << 16) |
-                     (headerBuffer[12] << 8) |
-                     headerBuffer[13];
+  const payloadLen = ((headerBuffer[10] << 24) |
+                      (headerBuffer[11] << 16) |
+                      (headerBuffer[12] << 8) |
+                      headerBuffer[13]) >>> 0;
 
   if (payloadLen <= 0 || payloadLen > 500 * 1024 * 1024) {
     throw new Error('Invalid steganography payload length detected');

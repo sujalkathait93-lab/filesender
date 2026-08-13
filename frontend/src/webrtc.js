@@ -528,9 +528,10 @@ export class WebRTCSession {
   resume() {
     this.isPaused = false;
     if (this.role === 'receiver') {
-      const lastReceivedIndex = this.receivedChunks.size > 0 
-        ? Math.max(...Array.from(this.receivedChunks.keys())) 
-        : -1;
+      let lastReceivedIndex = -1;
+      for (const idx of this.receivedChunks.keys()) {
+        if (idx > lastReceivedIndex) lastReceivedIndex = idx;
+      }
       this.socket?.emit('request_resume', {
         room: this.roomCode,
         last_chunk_index: lastReceivedIndex
