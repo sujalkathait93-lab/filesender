@@ -44,14 +44,20 @@ socketio = SocketIO(
 )
 
 # Configuration
-DB_PATH = os.environ.get("DB_PATH", "database/app.db")
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+is_vercel = os.environ.get("VERCEL") == "1" or os.environ.get("VERCEL_ENV") is not None
+default_db = "/tmp/app.db" if is_vercel else "database/app.db"
+default_upload = "/tmp/uploads" if is_vercel else "uploads"
+
+DB_PATH = os.environ.get("DB_PATH", default_db)
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", default_upload)
 MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024))  # 2GB
 FILE_EXPIRY_HOURS = 24
 
 # Ensure directories exist
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+if os.path.dirname(DB_PATH):
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+if UPLOAD_DIR:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Datetime helpers
 def get_utc_now():
@@ -64,7 +70,9 @@ def get_utc_now_iso():
 class DatabaseManager:
     def __init__(self, db_path: str):
         self.db_path = db_path
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self.init_database()
 
     def get_connection(self):
