@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, File, X, Copy, Check, Shield, Lock, Key, Image as ImageIcon, Flame, Clock, ArrowLeft, Info } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { encryptFile, createTransferCode, formatBytes, copyToClipboard } from '../crypto'
 import { embedPayloadInImage } from '../steganography'
 
@@ -11,6 +12,7 @@ function UploadPage({ serverUrl }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
+  const [shareUrl, setShareUrl] = useState('');
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -106,6 +108,24 @@ function UploadPage({ serverUrl }) {
       const data = await response.json();
       const transferCode = createTransferCode(data.file_id, encrypted.password);
 
+      let bestUrl = `${window.location.origin}/download?code=${encodeURIComponent(transferCode)}`;
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isLocal) {
+        try {
+          const netInfoRes = await fetch(`${API_URL}/api/network-info`);
+          if (netInfoRes.ok) {
+            const netData = await netInfoRes.json();
+            const lanIp = (netData.local_ips || []).find(ip => ip !== '127.0.0.1' && !ip.startsWith('127.'));
+            if (lanIp) {
+              bestUrl = `http://${lanIp}:5173/download?code=${encodeURIComponent(transferCode)}`;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to fetch network info for LAN sharing URL:", e);
+        }
+      }
+      setShareUrl(bestUrl);
+
       setProgress({ stage: 'complete', percent: 100 });
       setResult({
         fileId: data.file_id,
@@ -131,6 +151,7 @@ function UploadPage({ serverUrl }) {
   const clearFile = () => {
     setFile(null);
     setResult(null);
+    setShareUrl('');
     setError(null);
     setProgress(null);
     setIsProcessing(false);
@@ -338,6 +359,16 @@ function UploadPage({ serverUrl }) {
             <div className="crypto-code-text">{result.transferCode}</div>
             <p className="hint-text">The recipient enters this code on the Receive page. The code contains the decryption key, so share it safely.</p>
           </div>
+
+          {shareUrl && (
+            <div className="qr-code-box animate-in">
+              <strong style={{ fontSize: '0.9rem', color: 'var(--foreground)' }}>Scan to Download on Mobile</strong>
+              <div className="qr-code-wrapper">
+                <QRCodeSVG value={shareUrl} size={150} level="M" includeMargin={false} />
+              </div>
+              <span className="hint-text" style={{ margin: 0 }}>Scan this code with your phone to auto-fill the code and decrypt the file instantly.</span>
+            </div>
+          )}
 
           <button className="btn btn-primary" onClick={handleCopy} style={{ width: '100%', justifyContent: 'center' }}>
             {copied ? <><Check size={18} /> Copied!</> : <><Copy size={18} /> Copy Code</>}

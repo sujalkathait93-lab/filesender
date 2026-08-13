@@ -1303,3 +1303,131 @@ a:focus-visible,
   box-shadow: 0 0 25px rgba(239, 68, 68, 0.15);
 }
 
+/* QR Code Section Styling */
+.qr-code-box {
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.qr-code-wrapper {
+  background: #ffffff;
+  padding: 0.75rem;
+  border-radius: 10px;
+  display: inline-flex;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Success Section Card */
+.success-section {
+  margin-top: 1.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--success);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: var(--shadow-card-hover);
+  text-align: center;
+}
+
+.success-icon-container {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(0, 212, 170, 0.15);
+  color: var(--success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+  box-shadow: 0 0 20px rgba(0, 212, 170, 0.2);
+}
+
+.success-section h3 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--success);
+}
+
+.success-file-box {
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.success-file-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.success-file-icon {
+  background: rgba(0, 212, 170, 0.15);
+  color: var(--success);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.success-file-text {
+  overflow: hidden;
+}
+
+.success-file-name {
+  display: block;
+  font-size: 0.95rem;
+  word-break: break-all;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.success-file-size {
+  font-size: 0.8rem;
+  color: var(--foreground-muted);
+}
+
+/* Touch & Mobile Responsiveness Enhancements */
+@media (max-width: 768px) {
+  .navbar {
+    padding: 1rem 1.25rem;
+  }
+  .btn {
+    padding: 0.95rem 1.75rem; /* Larger touch target */
+  }
+}
+
+@media (max-width: 480px) {
+  .cta-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    width: 100%;
+  }
+  .cta-buttons .btn {
+    width: 100%;
+  }
+  .nav-brand .badge {
+    display: none;
+  }
+}
+
+/* Wrap long code/pre text to prevent horizontal overflow */
+code, pre {
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+

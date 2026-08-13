@@ -17,6 +17,7 @@ function DownloadPage({ serverUrl }) {
   const [isBurned, setIsBurned] = useState(false);
   const [manualKey, setManualKey] = useState('');
   const [needsKey, setNeedsKey] = useState(false);
+  const [decryptedBlobUrl, setDecryptedBlobUrl] = useState(null);
 
   // Guards against duplicate searches (React StrictMode double-mount / double effect)
   const searchInFlightRef = useRef(false);
@@ -117,7 +118,7 @@ function DownloadPage({ serverUrl }) {
 
     setIsDecrypting(true);
     setError(null);
-    setProgress({ stage: 'downloading', percent: 10 });
+    setProgress({ stage: 'downloading', percent: 0 });
 
     try {
       const downloadEndpoint = triggerBrowserSave
@@ -140,14 +141,37 @@ function DownloadPage({ serverUrl }) {
 
       const isBurnHeader = response.headers.get('X-Burn-On-Read') === '1';
 
-      let blobData = await response.blob();
-      setProgress({ stage: 'decrypting', percent: 35 });
+      // Stream the response body to show live progress
+      const reader = response.body.getReader();
+      const contentLength = response.headers.get('Content-Length');
+      const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+      let receivedBytes = 0;
+      const chunks = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        receivedBytes += value.length;
+
+        if (totalBytes > 0) {
+          const percent = Math.min(99, Math.round((receivedBytes / totalBytes) * 70));
+          setProgress({ stage: 'downloading', percent });
+        } else {
+          // If no content length, show bytes loaded
+          setProgress({ stage: 'downloading', percent: 35 });
+        }
+      }
+
+      const blobData = new Blob(chunks);
+      setProgress({ stage: 'decrypting', percent: 75 });
 
       let encryptedPayloadBlob = blobData;
       try {
         const extractedBytes = await extractPayloadFromImage(blobData);
         encryptedPayloadBlob = new Blob([extractedBytes]);
-        setProgress({ stage: 'steganography_extracted', percent: 55 });
+        setProgress({ stage: 'steganography_extracted', percent: 85 });
       } catch (_) {}
 
       const decryptedData = await decryptFile(
@@ -155,7 +179,10 @@ function DownloadPage({ serverUrl }) {
         key,
         fileInfo.iv,
         fileInfo.salt,
-        (p) => setProgress(p)
+        (p) => {
+          const basePercent = p.stage === 'complete' ? 100 : 85 + Math.round(p.percent * 0.15);
+          setProgress({ stage: p.stage, percent: basePercent });
+        }
       );
 
       const ext = fileInfo.original_name.split('.').pop().toLowerCase();
@@ -163,18 +190,21 @@ function DownloadPage({ serverUrl }) {
       const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
       const isPdf = ext === 'pdf';
 
+      const mimeType = fileInfo.mime_type || 'application/octet-stream';
+      const decryptedBlob = new Blob([decryptedData], { type: mimeType });
+      const url = window.URL.createObjectURL(decryptedBlob);
+      setDecryptedBlobUrl(url);
+
       if (!triggerBrowserSave) {
         if (isText) {
           const textStr = new TextDecoder().decode(decryptedData);
           setPreviewContent(textStr);
           setPreviewType('text');
         } else if (isImg) {
-          const imgBlob = new Blob([decryptedData], { type: `image/${ext}` });
-          setPreviewContent(URL.createObjectURL(imgBlob));
+          setPreviewContent(url);
           setPreviewType('image');
         } else if (isPdf) {
-          const pdfBlob = new Blob([decryptedData], { type: 'application/pdf' });
-          setPreviewContent(URL.createObjectURL(pdfBlob));
+          setPreviewContent(url);
           setPreviewType('pdf');
         } else {
           const textStr = new TextDecoder().decode(decryptedData.slice(0, 10000));
@@ -183,15 +213,13 @@ function DownloadPage({ serverUrl }) {
         }
         setShowPreviewModal(true);
       } else {
-        const blob = new Blob([decryptedData]);
-        const url = window.URL.createObjectURL(blob);
+        // Automatic download
         const a = document.createElement('a');
         a.href = url;
         a.download = fileInfo.original_name;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
 
         if (isBurnHeader || fileInfo.burn_on_read) {
           setIsBurned(true);
@@ -241,6 +269,7 @@ function DownloadPage({ serverUrl }) {
     setIsBurned(false);
     setProgress(null);
     setCodeInput('');
+    setDecryptedBlobUrl(null);
   };
 
   return (
@@ -287,7 +316,7 @@ function DownloadPage({ serverUrl }) {
         </div>
       )}
 
-      {fileInfo && (
+      {fileInfo && !success && (
         <div className="file-info animate-in">
           <div className="file-info-header">
             <div className="file-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981' }}>
@@ -385,7 +414,7 @@ function DownloadPage({ serverUrl }) {
         </div>
       )}
 
-      {progress && (
+      {progress && !success && (
         <div className="progress-container" style={{ marginTop: '1.25rem' }}>
           <div className="progress-bar">
             <div className="progress-fill green-fill" style={{ width: `${progress.percent}%` }} />
@@ -397,9 +426,54 @@ function DownloadPage({ serverUrl }) {
         </div>
       )}
 
-      {success && !fileInfo && (
-        <div className="status-message success" style={{ marginTop: '1.25rem' }}>
-          <Check size={18} /> File received and decrypted successfully!
+      {success && fileInfo && (
+        <div className="success-section animate-in">
+          <div className="success-icon-container">
+            <Check size={32} />
+          </div>
+          <h3>File Decrypted Successfully!</h3>
+          <p style={{ color: 'var(--foreground-muted)', fontSize: '0.925rem', marginBottom: '1.5rem' }}>
+            The file has been decrypted locally in your browser. Tap the button below to save it to your device's downloads folder.
+          </p>
+
+          <div className="success-file-box">
+            <div className="success-file-details">
+              <div className="success-file-icon">
+                <FileText size={20} />
+              </div>
+              <div className="success-file-text">
+                <strong className="success-file-name">{fileInfo.original_name}</strong>
+                <span className="success-file-size">{formatBytes(fileInfo.original_size)}</span>
+              </div>
+            </div>
+          </div>
+
+          {fileInfo.burn_on_read && (
+            <div className="burn-banner" style={{ marginTop: '0', marginBottom: '1.5rem', textAlign: 'left' }}>
+              <Flame size={20} style={{ color: '#ef4444', flexShrink: 0 }} />
+              <div>
+                <strong style={{ fontSize: '0.85rem', display: 'block', color: '#fca5a5' }}>Temporary in-browser copy only</strong>
+                <span style={{ fontSize: '0.78rem', color: 'rgba(254, 202, 202, 0.8)' }}>
+                  This file was set to Burn-on-Read and has been deleted from the server. If you leave this page without saving, you cannot download it again.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {decryptedBlobUrl && (
+            <a
+              href={decryptedBlobUrl}
+              download={fileInfo.original_name}
+              className="btn btn-primary btn-lg"
+              style={{ width: '100%', justifyContent: 'center', textDecoration: 'none', display: 'inline-flex', fontSize: '1rem', padding: '1rem 2rem' }}
+            >
+              <Download size={20} /> Save to Device
+            </a>
+          )}
+
+          <button className="btn btn-secondary" onClick={handleNewSearch} style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem' }}>
+            Receive Another File
+          </button>
         </div>
       )}
 

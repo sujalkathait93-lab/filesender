@@ -1,363 +1,203 @@
-# SecureShare
+# SecureShare 🔒🖼️
 
-[![React](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite-61DAFB?logo=react&logoColor=black&style=flat-square)](https://react.dev/)
-[![Python](https://img.shields.io/badge/Backend-Python%20Flask%203.0-3776AB?logo=python&logoColor=white&style=flat-square)](https://flask.palletsprojects.com/)
-[![Security](https://img.shields.io/badge/Security-AES--256--GCM-10B981?style=flat-square)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
-[![Steganography](https://img.shields.io/badge/Steganography-LSB%20Image-8B5CF6?style=flat-square)](https://en.wikipedia.org/wiki/Steganography)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-
-SecureShare is a private file sharing web application. It locks files directly inside your web browser before uploading them, hides the scrambled data inside an ordinary-looking picture, and gives you a single secret code to share with your receiver.
+SecureShare is a private file-sharing web application. It locks files directly inside your web browser before uploading them, hides the scrambled data inside an ordinary-looking picture, and gives you a single secret code to share with your receiver.
 
 ---
 
-## Table of Contents
+## 🌟 The Big Picture: How it Works (Simply Explained)
 
-- [The Basic Idea (For Beginners)](#the-basic-idea-for-beginners)
-- [System Diagrams and Explanations](#system-diagrams-and-explanations)
-  - [1. The Big Picture](#1-the-big-picture)
-  - [2. How Sending a File Works](#2-how-sending-a-file-works)
-  - [3. How Receiving a File Works](#3-how-receiving-a-file-works)
-  - [4. How Data is Hidden Inside an Image](#4-how-data-is-hidden-inside-an-image)
-- [Key Features Explained Simply](#key-features-explained-simply)
-- [Technologies Used](#technologies-used)
-- [Deep Dive: How the Core Technology Works](#deep-dive-how-the-core-technology-works)
-  - [1. Cryptography (AES-256-GCM + PBKDF2)](#1-cryptography-web-crypto-api-aes-256-gcm--pbkdf2)
-  - [2. Steganography (HTML5 Canvas LSB)](#2-steganography-html5-canvas-api-pixel-color-channels)
-  - [3. Networking (WebRTC + Socket.IO)](#3-networking-webrtc--socketio-direct-p2p-transfer)
-- [Project Folder Structure](#project-folder-structure)
-- [How to Run on Your Computer](#how-to-run-on-your-computer)
-- [API Reference](#api-reference)
-- [License](#license)
+Usually, when you upload a file to a website, their servers can read and see everything inside your file. SecureShare prevents this using three simple techniques:
 
----
+### 1. Encryption 🔑 (The Safe)
+* **What it is:** Scrambling your file into unreadable mathematical code (AES-256).
+* **Why we use it (Purpose):** To lock the file before it leaves your computer. If a hacker intercepts it, it looks like random gibberish (`x8#q2!9%`). Only someone with the secret key can decrypt it.
+* **Analogy:** Putting a secret letter inside a small, heavy iron safe before mailing it.
 
-## The Basic Idea (For Beginners)
+### 2. Steganography 🎨 (The Hollow Book)
+* **What it is:** Hiding the scrambled data inside the tiny color dots (pixels) of a digital picture.
+* **Why we use it (Purpose):** To hide the fact that you are sharing a file. To anyone else (like a server or internet router), you are just uploading or downloading a normal cat photo.
+* **Analogy:** Hiding your locked iron safe inside a hollowed-out dictionary on a bookshelf.
 
-When you send a file through most regular websites, the server can read and see everything inside your file.
-
-SecureShare works differently:
-
-1. **Your computer locks the file first**: Before anything leaves your browser, your file is scrambled into unreadable mathematical code (called AES-256 encryption).
-2. **The scrambled file is hidden in a picture**: The scrambled data is packed into the tiny color dots (pixels) of a digital image. This technique is called **steganography**. To anyone looking at the image, it just looks like regular artwork.
-3. **The server never knows the password**: The server only holds the image file. It cannot open it, cannot decrypt it, and cannot read what is inside.
-4. **Your friend unlocks it with one code**: You send your friend a secret code (for example: `SEC-4BE819D7-9F8A73C2`). That code contains both the file location and the key to unlock it.
+### 3. WebRTC & Socket.IO 🤝 (Direct Conversation)
+* **What it is:** Connecting two web browsers directly to each other.
+* **Why we use it (Purpose):** To send files directly from your computer to your friend's computer without uploading them to a storage server.
+* **Analogy:** Introducing two people at a party so they can talk face-to-face, instead of passing letters through a third person.
 
 ---
 
-## System Diagrams and Explanations
+## 🛠️ Technologies Used & Why We Use Them
 
-### 1. The Big Picture
-
-This diagram shows the complete journey of a file from the sender to the receiver.
-
-```mermaid
-graph TD
-    subgraph SENDER ["Sender Computer"]
-        A[Original File] --> B[Compress File]
-        B --> C[Lock with Encryption Key]
-        C --> D[Embed into Image Pixels]
-        D --> E[Camouflage Image]
-    end
-
-    subgraph SERVER ["Storage Server (Blind Courier)"]
-        E -->|Upload| F[(Encrypted Vault Storage)]
-    end
-
-    subgraph RECEIVER ["Receiver Computer"]
-        F -->|Download Image| G[Extract Hidden Pixels]
-        H[Enter Secret Code] --> I[Unlock with Key]
-        G --> I
-        I --> J[Decompress File]
-        J --> K[Original File Restored]
-    end
-
-    classDef senderStyle fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#fff;
-    classDef receiverStyle fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#fff;
-    classDef serverStyle fill:#1f2937,stroke:#9ca3af,stroke-width:1.5px,color:#fff;
-
-    class A,B,C,D,E senderStyle;
-    class G,H,I,J,K receiverStyle;
-    class F serverStyle;
-```
-
-**Explanation in plain English:**
-- The sender's computer locks and hides the file into a photo.
-- The server acts like a locked mailbox: it stores the photo, but it does not have the key to open it.
-- The receiver's computer downloads the photo, uses the secret code to unlock it, and gets the original file back.
-
----
-
-### 2. How Sending a File Works
-
-Here is the exact step-by-step process that happens when you select a file and click **"Encrypt & Get Code"**:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Sender as Sender
-    participant Browser as Sender Browser
-    participant Crypto as Encryption Module
-    participant ImageEngine as Steganography Module
-    participant Server as Vault Server
-    actor Receiver as Receiver
-
-    Sender->>Browser: Selects a file (PDF, Doc, Image, Zip, etc.)
-    Browser->>Crypto: Generate random secret key
-    Crypto->>Crypto: Compress file and encrypt with AES-256
-    Crypto-->>Browser: Scrambled data
-    Browser->>ImageEngine: Inject scrambled data into image pixels
-    ImageEngine-->>Browser: Finished image file
-    Browser->>Server: Upload image file (POST /api/upload)
-    Server-->>Browser: Return File ID
-    Browser->>Browser: Combine File ID + Key into Secret Code
-    Browser-->>Sender: Display Secret Code (e.g. SEC-4BE819D7-9F8A73C2)
-    Sender->>Receiver: Sends code via any chat or email
-```
-
-**Step-by-step breakdown:**
-1. **File Selection**: You drag and drop any file onto the website.
-2. **Key Creation**: Your browser automatically generates a unique random password.
-3. **Compression & Encryption**: The browser compresses the file to make it smaller, then locks it with AES-256 encryption.
-4. **Image Camouflage**: The encrypted data is hidden directly inside the color channels of a digital image.
-5. **Upload**: Only the image is sent to the server. The password stays on your computer.
-6. **Code Generation**: The website creates a simple code (e.g., `SEC-4BE819D7-9F8A73C2`) for you to copy and share.
-
----
-
-### 3. How Receiving a File Works
-
-Here is what happens when your receiver receives the secret code and opens the file:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Receiver as Receiver
-    participant Browser as Receiver Browser
-    participant Server as Vault Server
-    participant ImageEngine as Steganography Module
-    participant Crypto as Decryption Module
-
-    Receiver->>Browser: Enters Secret Code
-    Browser->>Browser: Reads File ID and Secret Key from the code
-    Browser->>Server: Request image using File ID (GET /api/download)
-    Server-->>Browser: Streams image file
-    Note over Server: If Burn-on-Read is enabled, server deletes file now
-    Browser->>ImageEngine: Read pixels and extract hidden bytes
-    ImageEngine-->>Browser: Scrambled data
-    Browser->>Crypto: Decrypt with Secret Key and decompress
-    Crypto-->>Browser: Clean original file
-    Browser-->>Receiver: Displays Preview and Download button
-```
-
-**Step-by-step breakdown:**
-1. **Enter Code**: The receiver pastes the secret code into the "Receive" box.
-2. **Download Image**: The browser downloads the image from the server.
-3. **Self-Destruction (Burn-on-Read)**: If you selected "Burn-on-Read", the server completely erases the file from its disk immediately after this download.
-4. **Extract & Unlock**: The browser extracts the hidden data from the image pixels and uses the key inside the code to unlock the original file.
-5. **View or Save**: The receiver can view the document/image in their browser or save it to their computer.
-
----
-
-### 4. How Data is Hidden Inside an Image
-
-This technique is called **Least Significant Bit (LSB) Steganography**.
-
-Every digital picture is made up of millions of tiny square dots called **pixels**. Each pixel gets its color from three values: **Red**, **Green**, and **Blue** (each ranging from 0 to 255).
-
-```mermaid
-flowchart LR
-    subgraph DATA ["1. Secret Data Bits"]
-        D["1 0 1 1 0 0 ..."]
-    end
-
-    subgraph PIXEL ["2. Single Pixel Color Channels"]
-        R["Red: 200 -> Change last bit to 1 -> 201"]
-        G["Green: 150 -> Change last bit to 0 -> 150"]
-        B["Blue: 80 -> Change last bit to 1 -> 81"]
-    end
-
-    subgraph RESULT ["3. Output Picture"]
-        O["Looks completely normal to human eyes"]
-    end
-
-    DATA --> PIXEL --> RESULT
-```
-
-**Why this works:**
-- Changing a color number from `200` to `201` is a difference of less than 0.5% in brightness.
-- The human eye cannot notice this tiny shift.
-- But a computer can read every single bit back with 100% accuracy to recover your file.
-
----
-
-## Key Features Explained Simply
-
-- **Zero-Knowledge Privacy**: Your files are encrypted on your device. The server never gets the decryption key and cannot read your data.
-- **Image Camouflage**: Files are hidden inside image pixels, making data transfers look like ordinary photo traffic.
-- **Burn-on-Read**: When enabled, files are automatically destroyed from the server after they are downloaded once.
-- **In-Browser Quick View**: PDF files, images, and text documents can be previewed directly inside the browser without saving to disk.
-- **Automatic Expiration**: Files that are not downloaded are automatically purged after the chosen time limit (1 hour, 4 hours, or 24 hours).
-- **Direct P2P Transfer (WebRTC)**: Allows direct computer-to-computer transfers over your local network or the Internet.
-
----
-
-## Technologies Used
-
-| Category | Technology | Purpose |
+| Technology / Component | What it is / What it does | Why We Use It |
 | :--- | :--- | :--- |
-| **Frontend** | React 18 + Vite | User interface and client-side interactions |
-| **Backend** | Python Flask 3.0 | API to receive and serve encrypted files |
-| **Database** | SQLite3 | Stores file metadata, expiration timers, and download counts |
-| **Cryptography** | Web Crypto API (AES-256-GCM + PBKDF2) | Client-side encryption and decryption |
-| **Steganography** | HTML5 Canvas API | Reads and writes hidden data into pixel color channels |
-| **Networking** | WebRTC + Socket.IO | Direct peer-to-peer data transfers |
+| **React 18 + Vite** | Powers the webpage interface | For a fast, responsive, and easy-to-use website layout. |
+| **Python Flask** ([`api/index.py`](api/index.py)) | Acts as the backend "matchmaker" | Connects the two browsers together so they can initiate a direct peer-to-peer connection. |
+| **Web Crypto API (AES-256)** | Scrambles and locks files inside your browser | Ensure files are locked *before* leaving your machine; the server never learns your passwords. |
+| **HTML5 Canvas** | Reads and edits image pixel colors | Allows us to embed the secret data into image colors without changing how the image looks. |
+| **SQLite3** | Database to store file codes & expirations | To keep track of download limits, file sizes, and automatically expire files when their time runs out. |
 
 ---
 
-## Deep Dive: How the Core Technology Works
+## 🔐 Cryptography Deep Dive: Web Crypto API (AES-256-GCM + PBKDF2)
 
-Here is a simple explanation of the three main engines that power SecureShare, explained with real-world examples:
+To keep files private without sharing passwords with the server, SecureShare handles all encryption directly in your web browser using the native **Web Crypto API** (`window.crypto.subtle`). 
 
----
+Here is how it works, explained in **three simple points**:
 
-### 1. Cryptography: Web Crypto API (AES-256-GCM + PBKDF2)
+### 1. Key Maker (PBKDF2) 🔑
+* **What it does**: Turns a simple text password (like `"my-password"`) into a strong, mathematically secure 256-bit key.
+* **Why we use it**: Computers can easily guess short, simple passwords. PBKDF2 mixes the password with a random **Salt** (random bytes) and hashes it **100,000 times**. This makes guessing the password extremely slow and expensive for hackers.
+* **Analogy**: Baking a fragile piece of clay (your raw password) in a hot kiln for hours to turn it into a solid, unbreakable brick.
 
-> **Think of it like a bank vault with a custom digital lock.**
+### 2. The Secure Safe (AES-256-GCM) 🔒
+* **What it does**: Scrambles your files and locks them so only your derived key can open them.
+* **Why we use it**: AES-256 is an industry-standard secure lock. **GCM** adds a tamper-proof "security seal" (Authentication Tag) to the locked file. If anyone tries to modify or corrupt the encrypted file, the seal breaks, and the browser will refuse to decrypt it.
+* **Analogy**: Putting your file in a heavy iron safe (encryption) and wrapping it with an official tamper-evident security seal (authentication tag).
 
-#### What is AES-256-GCM?
-- **AES (Advanced Encryption Standard)** is the gold-standard security lock used by governments and banks.
-- **256-bit** means there are $2^{256}$ possible combinations. That number is larger than the number of all atoms in the universe. Guessing it is impossible.
-- **GCM (Galois/Counter Mode)** adds an automatic "tamper-proof seal" to your file. If anyone tries to modify even one letter of your locked file while it is sent, the vault notices and refuses to open, keeping you safe from hackers.
-
-#### What is PBKDF2?
-- **PBKDF2** is a password generator. It takes your short password (like `secret`) and turns it into a massive, super-strong key by mixing it with a random number (called a **salt**) and shaking it mathematically **100,000 times**. This makes it impossible for automated systems to guess it.
-
-#### Practical Example:
-Imagine you want to lock the secret word: `"hello"`.
-1. **Password**: You select a simple password, like `myPassword`.
-2. **PBKDF2 Key Strengthening**: Your browser takes `myPassword`, adds a random salt like `x9y2z7`, and hashes it 100,000 times to create a massive, secure key: `f5a8c901e...`.
-3. **AES-256 Encryption**: Your browser uses that key to lock `"hello"`.
-   - **Input**: `"hello"`
-   - **Output (Ciphertext)**: `x8#q2!9%` (looks like random garbage characters).
-   - This scrambled `x8#q2!9%` is the only thing that leaves your computer.
+### 3. The Randomness Mixers (Salt & IV) 🎲
+* **What they do**: 
+  * **Salt**: 16 random bytes added to the password.
+  * **IV (Initialization Vector)**: 12 random bytes added to the encryption process.
+* **Why we use them**: If you encrypt the same file with the same password twice, the output will look identical without them. Salt and IV guarantee that encrypting the same file with the same password 100 times produces 100 completely different-looking scrambled files.
+* **Analogy**: A chef using different seasonings (Salt) and cooking times (IV) for every order, ensuring every single dish tastes unique, even if they started with the same basic ingredients.
 
 ---
 
-### 2. Steganography: HTML5 Canvas API (Pixel Color Channels)
+### 📊 Step-by-Step Data Flow Example
 
-> **Think of it like writing a secret message in invisible ink on the back of an art painting.**
+Here is exactly how a file is processed, step-by-step:
 
-#### What is Steganography?
-- Cryptography scrambles your message so nobody can *read* it.
-- Steganography hides your message so nobody can *see* that you are sending anything at all.
+#### 🟢 Step A: The Sender Encrypts a File
+1. **Inputs**: The file (`"secret-report.pdf"`) and a password (`"hello123"`).
+2. **Key Derivation**: The browser generates a random **Salt**, combines it with `"hello123"`, and runs **PBKDF2** to get a **256-bit Key**.
+3. **Encryption**: The browser generates a random **IV**, combines the file, key, and IV, and runs **AES-GCM**.
+4. **Output Package**: You get:
+   * 📦 **Encrypted File Data** (scrambled gibberish)
+   * 🏷️ **Authentication Tag** (tamper seal)
+   * 🎲 **Salt & IV** (required for decryption)
 
-#### How does it hide data in images?
-1. Every digital picture is a grid of tiny color dots called **pixels**.
-2. Each pixel is made of 3 color channels: **Red**, **Green**, and **Blue** (RGB).
-3. Each color can have a brightness level from `0` (totally dark) to `255` (fully bright).
-4. SecureShare uses the **HTML5 Canvas API** to read these color values, convert them to binary numbers, and hide your encrypted file inside the very last digit of the color numbers.
-
-#### Practical Example:
-Imagine we have a pixel that is bright red.
-- **Original Color Values**: Red: `200`, Green: `100`, Blue: `50`.
-- Let's look at the Red value `200` in computer binary: `11001000`.
-- We want to hide a single bit of our secret file: `1`.
-- We replace the very last digit of the Red binary number with our secret bit `1`:
-  - **Old Binary**: `11001000` (value 200)
-  - **New Binary**: `11001001` (value 201)
-- The Red value changes slightly from `200` to `201`.
-- Because the change is so small (less than 0.4%), **no human eye can see the difference**. The picture looks exactly the same, but the computer can read the pixels, check the last digits, and pull out your secret file!
+#### 🔴 Step B: The Receiver Decrypts the File
+1. **Inputs**: The output package (Encrypted File, Tag, Salt, IV) and the password (`"hello123"`).
+2. **Key Derivation**: The browser uses the password + the saved **Salt** to recreate the exact same **256-bit Key**.
+3. **Decryption & Verification**: The browser inputs the Encrypted File, Tag, IV, and Key into **AES-GCM**.
+4. **Outcome**: The browser verifies the tamper seal (Tag) is intact and decrypts the scrambled data back into the original `"secret-report.pdf"`.
 
 ---
 
-### 3. Networking: WebRTC + Socket.IO (Direct P2P Transfer)
+### 💻 Web Crypto API Code Example
 
-> **Think of it like introducing two people at a party so they can talk directly to each other, instead of passing letters through a third person.**
+Here is a complete, copy-pasteable JavaScript implementation showing how to encrypt and decrypt text directly in the browser console using the Web Crypto API:
 
-#### The Problem:
-- Usually, when you share a file, you upload it to a server (like Google Drive or Dropbox), and the receiver downloads it from that server.
-- This is slow and copies your personal data onto a stranger's server.
+```javascript
+// Helper to convert strings to ArrayBuffers and vice-versa
+const encode = (txt) => new TextEncoder().encode(txt);
+const decode = (buf) => new TextDecoder().decode(buf);
 
-#### How SecureShare fixes this:
-1. **Socket.IO (The Matchmaker)**: When you share your code, the backend server acts as a matchmaker. It connects your browser and your friend's browser so they can exchange details.
-2. **WebRTC (The Direct Line)**: Once introduced, the two browsers connect directly to each other using a technology called **RTCPeerConnection**.
-3. **P2P Data Transfer**: A direct channel is built between both computers. The file is streamed straight from your memory to your friend's memory over the internet.
+// 1. Deriving a Key from a Password (PBKDF2)
+async function deriveKey(password, salt) {
+  // Import the raw password text as a temporary key-material
+  const tempKey = await window.crypto.subtle.importKey(
+    "raw",
+    encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
 
-#### Practical Example:
-Imagine you want to send a large 500MB video to your friend sitting in the same room.
-1. Your browser tells the signaling server: *"I have a file ready at room code 123."*
-2. Your friend types the code `123`. The signaling server tells both browsers how to find each other.
-3. The server steps away.
-4. Your browser sends the video chunks directly across your local Wi-Fi router to your friend's browser.
-5. The video transfers in seconds, never reaches the internet server, and leaves **zero** traces on any storage disk.
+  // Derive the actual AES-GCM 256-bit key from the password + salt
+  return await window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    tempKey,
+    { name: "AES-GCM", length: 256 },
+    false, // key is not exportable for security
+    ["encrypt", "decrypt"]
+  );
+}
 
----
+// 2. Encryption (AES-GCM)
+async function encryptData(plaintext, password) {
+  const salt = window.crypto.getRandomValues(new Uint8Array(16)); // 16-byte random salt
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));   // 12-byte random IV for GCM
+  
+  const key = await deriveKey(password, salt);
+  
+  const ciphertext = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    key,
+    encode(plaintext)
+  );
 
-## Project Folder Structure
+  // Return ciphertext alongside salt and iv (needed for decryption)
+  return {
+    ciphertext: new Uint8Array(ciphertext),
+    salt: salt,
+    iv: iv
+  };
+}
 
+// 3. Decryption (AES-GCM)
+async function decryptData(ciphertext, password, salt, iv) {
+  const key = await deriveKey(password, salt);
+
+  const decrypted = await window.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv },
+    key,
+    ciphertext
+  );
+
+  return decode(decrypted);
+}
+
+// --- Usage Example ---
+(async () => {
+  const password = "my-super-secret-password";
+  const message = "Hello SecureShare! This is a secret message.";
+  
+  console.log("Original Message:", message);
+  
+  // Encrypt
+  const encrypted = await encryptData(message, password);
+  console.log("Ciphertext (scrambled):", encrypted.ciphertext);
+  
+  // Decrypt
+  const decrypted = await decryptData(encrypted.ciphertext, password, encrypted.salt, encrypted.iv);
+  console.log("Decrypted Message:", decrypted);
+})();
 ```
-secureshare/
-├── api/
-│   └── index.py               # Flask backend API & WebRTC signaling
-├── database/
-│   └── .gitkeep               # Database directory
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Upload.jsx     # Send & Encrypt page
-│   │   │   └── Download.jsx   # Receive & Decrypt page
-│   │   ├── crypto.js          # Encryption and key derivation
-│   │   ├── steganography.js   # Image pixel encoder and decoder
-│   │   ├── webrtc.js          # Direct peer-to-peer data transfer
-│   │   ├── App.jsx            # Main app component
-│   │   └── App.css            # Stylesheet
-│   ├── index.html             # HTML entry point
-│   └── package.json           # Frontend dependencies
-├── uploads/                   # Temporary encrypted storage
-├── requirements.txt           # Python backend dependencies
-└── README.md                  # Project documentation
-```
 
 ---
 
-## How to Run on Your Computer
+## 🚀 How to Run It on Your Computer
 
 ### Prerequisites
-- **Node.js** (version 18 or higher)
-- **Python** (version 3.10 or higher)
+Make sure you have **Node.js** (version 18 or higher) and **Python** (version 3.10 or higher) installed.
 
-### 1. Start the Backend
-Open a terminal in the project root folder:
+#### Step 1: Start the Backend (The Matchmaker)
+Open a terminal in the project's root folder and run:
 ```powershell
 pip install -r requirements.txt
 python api/index.py
 ```
-The backend server will start on port `8000`.
+*This starts the Flask server at `http://localhost:8000`.*
 
-### 2. Start the Frontend
-Open a second terminal window:
+#### Step 2: Start the Frontend (The Interface)
+Open a second terminal window, navigate to the `frontend` folder, and run:
 ```powershell
 cd frontend
 npm install
 npm run dev
 ```
-Open **`http://localhost:5173`** in your browser.
+*Open **`http://localhost:5173`** in your browser to start sharing files privately!*
 
 ---
 
-## API Reference
+## 💡 Key Features
 
-| Method | Route | Purpose |
-| :--- | :--- | :--- |
-| `GET` | `/api/health` | Check if the backend is running |
-| `POST` | `/api/upload` | Upload an encrypted image file |
-| `GET` | `/api/file-info/<id>` | Check file metadata (name, size, expiration) |
-| `GET` | `/api/download/<id>` | Download the encrypted image file |
-| `DELETE` | `/api/files/<id>` | Manually delete a file from the server |
-| `GET` | `/api/stats` | View server statistics |
-
----
-
-## License
-
-This project is open source and available under the [MIT License](LICENSE).
+* **Zero-Knowledge:** The server never holds your passwords or decrypted files.
+* **Self-Destruct (Burn-on-Read):** Files are automatically deleted from the server the instant they are downloaded once.
+* **Auto-Expire:** Files automatically delete after a set time (e.g. 1 hour, 4 hours, or 24 hours).
+* **Direct Transfer:** Fast browser-to-browser transfer for larger files over WebRTC.
