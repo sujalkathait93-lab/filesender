@@ -99,8 +99,8 @@ sequenceDiagram
     Browser->>Server: Upload the image to vault
     Server-->>Browser: Returns File ID (e.g. 4be819d7)
     Browser->>Browser: Combine into Share Code: SEC-4BE819D7-9F8A73C2
-    Browser-->>Sender: Displays Share Code & QR Code
-    Sender->>Receiver: Sends the code on WhatsApp / Telegram / Email
+    Browser-->>Sender: Generates Secret Share Code
+    Sender->>Receiver: Shares the secret code with receiver
 ```
 
 #### 📖 Step-by-Step Breakdown for Students:
@@ -109,7 +109,7 @@ sequenceDiagram
 3. **The file gets locked**: Using military-grade **AES-256**, your file turns into scrambled unreadable noise.
 4. **The secret is painted into a picture**: The scrambled data is hidden inside the color shades of an image.
 5. **Uploaded to the server**: Only the photo is sent to the server. The server **never** receives your password.
-6. **You get your magic code**: A neat code like `SEC-4BE819D7-9F8A73C2` is generated for you to share!
+6. **You get your magic code**: A neat code like `SEC-4BE819D7-9F8A73C2` is generated for your friend!
 
 ---
 
