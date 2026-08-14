@@ -467,7 +467,7 @@ sequenceDiagram
         UI->>FM: unpackFiles(decryptedBytes) -> Single file or Bundle list
         UI->>PM: preparePreview(fileItem) -> Allocates Object URL & starts 30s timer
         PM-->>UI: Render Image/Video/Audio/PDF/Code or Info Screen
-        Note over UI,PM: Live 30s Countdown running; at 0s automatically closes modal & revokes Object URL
+        Note over UI,PM: Live 30s Countdown running - at 0s automatically closes modal and revokes Object URL
     end
 
     alt User clicks "Save & Download" (Burn-on-Read active)
