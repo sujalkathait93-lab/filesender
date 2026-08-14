@@ -352,9 +352,9 @@ classDiagram
 stateDiagram-v2
     [*] --> IDLE : Initialize
     IDLE --> SELECT : User Selects Files
-    SELECT --> VALIDATE : Validate Total Size (<= 2 GB)
+    SELECT --> VALIDATE : Validate Total Size (Up to 2 GB)
     VALIDATE --> PREPARE : Size OK
-    VALIDATE --> FAILED : Size > 2 GB
+    VALIDATE --> FAILED : Size Exceeds 2 GB
     PREPARE --> PROCESSING : Multi-File Pack / Gzip Compress
     PROCESSING --> CREATING_TRANSFER : Encrypt AES-256-GCM / Embed LSB
     CREATING_TRANSFER --> WAITING_FOR_RECEIVER : Upload Complete (REST)
@@ -630,8 +630,8 @@ flowchart TD
     REST --> Storage
     Cleanup --> DB
     Cleanup --> Storage
-    D1 <..>|ICE Resolution| STUN
-    M1 <..>|Relay Fallback| TURN
+    D1 -.->|ICE Resolution| STUN
+    M1 -.->|Relay Fallback| TURN
     D1 <-->|WebRTC DataChannel (Direct P2P)| M1
 ```
 
