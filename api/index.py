@@ -51,6 +51,10 @@ def _register_error_handlers(app):
     def handle_not_found(_):
         return jsonify({"detail": "Endpoint not found"}), 404
 
+    @app.errorhandler(405)
+    def handle_method_not_allowed(_):
+        return jsonify({"detail": "Method not allowed. Ensure the correct HTTP method is used."}), 405
+
     @app.errorhandler(413)
     def handle_payload_too_large(_):
         return jsonify({"detail": "Upload exceeds the maximum allowed size"}), 413

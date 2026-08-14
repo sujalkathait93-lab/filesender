@@ -148,6 +148,11 @@ export async function encryptFile(file, onProgress) {
   let compressionRatio = '0.0';
 
   for (let i = 0; i < totalChunks; i++) {
+    // Yield to main thread every chunk so UI animations, spinners, and progress remain 60fps
+    if (totalChunks > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
     const start = i * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, totalSize);
     const raw = new Uint8Array(await file.slice(start, end).arrayBuffer());
@@ -215,6 +220,9 @@ export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onPro
     let chunkIndex = 0;
 
     while (offset < totalBytes) {
+      // Yield to main thread per chunk to prevent browser freezing
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       const header = new Uint8Array(await encryptedBlob.slice(offset, offset + 4).arrayBuffer());
       const chunkLength = new DataView(header.buffer).getUint32(0, true);
       offset += 4;

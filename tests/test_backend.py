@@ -170,5 +170,30 @@ check("file-info rate limited", limited > 0)
 check("rate limit Retry-After header", r.headers.get("Retry-After") is not None)
 print(f"  200 rapid lookups took {time.monotonic() - before:.2f}s")
 
+print("== route aliases & preflights (405 prevention) ==")
+r_alias = client.post("/upload", data={
+    "file": (io.BytesIO(b"alias-upload"), "alias.encrypted"),
+    "iv": "ab" * 12, "salt": "cd" * 16,
+}, content_type="multipart/form-data")
+check("upload via /upload without /api -> 200", r_alias.status_code == 200)
+
+r_root_upload = client.post("/", data={
+    "file": (io.BytesIO(b"root-upload"), "root.encrypted"),
+    "iv": "ab" * 12, "salt": "cd" * 16,
+}, content_type="multipart/form-data")
+check("upload via / (rewritten path) -> 200", r_root_upload.status_code == 200)
+
+r_options_api = client.options("/api/upload")
+check("OPTIONS /api/upload -> 204", r_options_api.status_code == 204)
+
+r_options_alias = client.options("/upload")
+check("OPTIONS /upload -> 204", r_options_alias.status_code == 204)
+
+r_health_alias = client.get("/health")
+check("health via /health -> 200", r_health_alias.status_code == 200)
+
+r_stats_alias = client.get("/stats")
+check("stats via /stats -> 200", r_stats_alias.status_code == 200)
+
 print(f"\n== {passed} passed, {failed} failed ==")
 sys.exit(1 if failed else 0)

@@ -2,19 +2,12 @@ import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick } from 'lucide-react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
+import { PageSkeletonLoader } from './components/Skeletons'
 import './App.css'
 
 // Route-level code splitting: crypto/steganography/QR code only load when needed
 const UploadPage = lazy(() => import('./pages/Upload'))
 const DownloadPage = lazy(() => import('./pages/Download'))
-
-function PageLoader() {
-  return (
-    <div className="page-loader" role="status" aria-label="Loading">
-      <div className="spinner" />
-    </div>
-  );
-}
 
 function App() {
   const [serverOnline, setServerOnline] = useState(null);
@@ -125,7 +118,7 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        <Suspense fallback={<PageLoader />}>
+        <Suspense fallback={<PageSkeletonLoader />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/upload" element={<UploadPage />} />

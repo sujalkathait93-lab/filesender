@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Download, Lock, Shield, AlertTriangle, Check, Key, Flame,
-  Eye, X, ArrowLeft, FileText, Info, Copy, Clock,
-  Image as ImageIcon, Video, Music, FileCode, File
+  Download, Lock, Shield, Check, Key, Flame,
+  Eye, X, ArrowLeft, FileText, Copy, Clock,
+  Image as ImageIcon, Video, Music, FileCode, File,
+  Loader2, Search, Sparkles
 } from 'lucide-react'
 import { parseTransferCode, extractKeyFromUrl, formatBytes } from '../crypto'
 import { TransferStateMachine, TransferState } from '../stateMachine'
 import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../previewManager'
 import { useDownload } from '../hooks/useDownload'
+import { FileInfoSkeleton, PreviewMediaSkeleton } from '../components/Skeletons'
+import { EmptyState, ErrorAlert, MeasurableProgressBar } from '../components/FeedbackStates'
 
 function DownloadPage() {
   const { fileId: urlFileId } = useParams();
@@ -28,6 +31,7 @@ function DownloadPage() {
   const [activePreviewItem, setActivePreviewItem] = useState(null);
   const [previewBundleFiles, setPreviewBundleFiles] = useState([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [mediaLoading, setMediaLoading] = useState(true);
 
   const previewManagerRef = useRef(null);
 
@@ -102,9 +106,11 @@ function DownloadPage() {
   };
 
   const handleSearchCode = (targetCode, targetKey = null) => {
-    if (searchInFlightRef.current) return;
+    if (searchInFlightRef.current || isLoading) return;
+    const target = targetCode || codeInput;
+    if (!target.trim()) return;
     searchInFlightRef.current = true;
-    searchCode(targetCode || codeInput, targetKey).finally(() => {
+    searchCode(target, targetKey).finally(() => {
       searchInFlightRef.current = false;
     });
   };
@@ -134,6 +140,7 @@ function DownloadPage() {
     const allFiles = unpacked?.files || [firstFile];
     setPreviewBundleFiles(allFiles);
     setActivePreviewIndex(0);
+    setMediaLoading(true);
 
     const prepared = previewManagerRef.current.preparePreview(firstFile);
     setActivePreviewItem(prepared);
@@ -143,6 +150,7 @@ function DownloadPage() {
   const handleSelectPreviewFile = (index) => {
     if (!previewBundleFiles[index] || !previewManagerRef.current) return;
     setActivePreviewIndex(index);
+    setMediaLoading(true);
     const prepared = previewManagerRef.current.preparePreview(previewBundleFiles[index]);
     setActivePreviewItem(prepared);
   };
@@ -169,32 +177,66 @@ function DownloadPage() {
         <p>Paste the transfer code to connect, verify, preview, and download.</p>
       </div>
 
-      <div className="download-input">
+      <div className="download-input" role="search">
         <input
           type="text"
           placeholder="Paste transfer code (e.g. SEC-4BE819D7-9F8A73C2)"
           value={codeInput}
           onChange={(e) => setCodeInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSearchCode()}
+          inputMode="text"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck="false"
+          disabled={isLoading || isDecrypting}
+          aria-label="Transfer Code"
         />
-        <button className="btn btn-secondary" onClick={handlePasteClipboard} title="Paste from clipboard">
+        <button
+          className="btn btn-secondary"
+          onClick={handlePasteClipboard}
+          title="Paste from clipboard"
+          disabled={isLoading || isDecrypting}
+        >
           <Copy size={16} /> Paste
         </button>
-        <button className="btn btn-primary" onClick={() => handleSearchCode()}>
-          <Key size={18} /> Connect & Receive
+        <button
+          className="btn btn-primary"
+          onClick={() => handleSearchCode()}
+          disabled={isLoading || isDecrypting || !codeInput.trim()}
+          aria-busy={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 size={18} className="spin" /> Connecting...
+            </>
+          ) : (
+            <>
+              <Key size={18} /> Connect & Receive
+            </>
+          )}
         </button>
       </div>
 
-      {isLoading && (
-        <div className="status-message info" role="status">
-          <Shield size={18} className="spin" /> {statusMessage}...
-        </div>
+      {/* Skeletons: rendered during initial lookup to prevent layout shifts (CLS) */}
+      {isLoading && <FileInfoSkeleton />}
+
+      {/* Error state with retry action */}
+      {error && !isLoading && (
+        <ErrorAlert
+          message={error}
+          onRetry={codeInput ? () => handleSearchCode(codeInput) : null}
+        />
       )}
 
-      {error && (
-        <div className="status-message error" role="alert">
-          <AlertTriangle size={18} /> {error}
-        </div>
+      {/* Empty State when idle */}
+      {!fileInfo && !isLoading && !error && !success && !isBurned && (
+        <EmptyState
+          icon={Search}
+          title="Ready to receive files"
+          description="Enter a transfer code or link from the sender to securely connect, inspect with 30-second preview, and decrypt."
+          actionText="Paste from Clipboard"
+          onAction={handlePasteClipboard}
+        />
       )}
 
       {fileInfo && !success && (
@@ -264,36 +306,47 @@ function DownloadPage() {
             </div>
           )}
 
-          {!isBurned && !isDecrypting && (
+          {/* Progress feedback while decrypting / downloading */}
+          {progress && isDecrypting && (
+            <div style={{ marginTop: '1.25rem' }}>
+              <MeasurableProgressBar
+                stage={progress.stage}
+                percent={progress.percent}
+                statusMessage={statusMessage}
+              />
+            </div>
+          )}
+
+          {!isBurned && (
             <div className="action-row" style={{ marginTop: '1.25rem' }}>
               <button
                 className="btn btn-secondary"
                 onClick={() => executeDownload(false, handlePreviewReady)}
+                disabled={isDecrypting}
                 style={{ flex: 1, minHeight: '48px' }}
               >
-                <Eye size={18} /> 30-Sec Preview
+                {isDecrypting ? <Loader2 size={18} className="spin" /> : <Eye size={18} />}
+                <span>30-Sec Preview</span>
               </button>
               <button
                 className="btn btn-primary"
                 onClick={() => executeDownload(true)}
+                disabled={isDecrypting}
+                aria-busy={isDecrypting}
                 style={{ flex: 1.2, minHeight: '48px' }}
               >
-                <Lock size={18} /> Save & Download
+                {isDecrypting ? (
+                  <>
+                    <Loader2 size={18} className="spin" /> Decrypting...
+                  </>
+                ) : (
+                  <>
+                    <Lock size={18} /> Save & Download
+                  </>
+                )}
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {progress && !success && (
-        <div className="progress-container" style={{ marginTop: '1.25rem' }} role="progressbar" aria-valuenow={progress.percent} aria-valuemin="0" aria-valuemax="100">
-          <div className="progress-bar">
-            <div className="progress-fill green-fill" style={{ width: `${progress.percent}%` }} />
-          </div>
-          <div className="progress-text">
-            <span>{statusMessage}</span>
-            <span>{progress.percent}%</span>
-          </div>
         </div>
       )}
 
@@ -363,7 +416,7 @@ function DownloadPage() {
 
       {/* Universal 30-Second Preview Modal for ALL file types */}
       {showPreviewModal && activePreviewItem && (
-        <div className="preview-overlay">
+        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="30-Second Temporary Preview">
           <div className="preview-modal">
             <div className="preview-header">
               <h3>
@@ -400,24 +453,32 @@ function DownloadPage() {
             <div className="preview-body">
               {/* Image Preview */}
               {activePreviewItem.category === 'image' && (
-                <div style={{ textAlign: 'center' }}>
+                <div style={{ textAlign: 'center', position: 'relative' }}>
+                  {mediaLoading && <PreviewMediaSkeleton height="280px" />}
                   <img
                     src={activePreviewItem.content}
                     alt="30-Second Temporary Preview"
                     className="preview-image"
+                    style={{ display: mediaLoading ? 'none' : 'block' }}
+                    onLoad={() => setMediaLoading(false)}
+                    onError={() => setMediaLoading(false)}
                   />
                 </div>
               )}
 
               {/* Video Preview */}
               {activePreviewItem.category === 'video' && (
-                <div style={{ textAlign: 'center' }}>
+                <div style={{ textAlign: 'center', position: 'relative' }}>
+                  {mediaLoading && <PreviewMediaSkeleton height="280px" />}
                   <video
                     src={activePreviewItem.content}
                     controls
                     autoPlay
                     className="preview-video"
                     playsInline
+                    style={{ display: mediaLoading ? 'none' : 'block' }}
+                    onLoadedData={() => setMediaLoading(false)}
+                    onError={() => setMediaLoading(false)}
                   >
                     Your browser does not support video playback.
                   </video>
@@ -442,11 +503,13 @@ function DownloadPage() {
 
               {/* PDF Preview */}
               {activePreviewItem.category === 'pdf' && (
-                <iframe
-                  src={activePreviewItem.content}
-                  title="PDF Preview"
-                  className="preview-pdf"
-                />
+                <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <iframe
+                    src={activePreviewItem.content}
+                    title="PDF Preview"
+                    className="preview-pdf"
+                  />
+                </div>
               )}
 
               {/* Text / Code Preview */}

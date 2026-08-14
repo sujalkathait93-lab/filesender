@@ -41,8 +41,16 @@ def _client_ip() -> str:
     return request.remote_addr or "unknown"
 
 
-@file_bp.route("/", methods=["GET"])
+@file_bp.route("/", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
 def root():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if request.method == "POST":
+        # Handle rewritten upload calls dispatched to root
+        if "file" in request.files:
+            return upload_file()
+        return jsonify({"detail": "Root endpoint does not accept POST without file payload"}), 400
+
     return jsonify({
         "service": "FileShare",
         "version": "2.2.0",
@@ -61,14 +69,20 @@ def root():
     })
 
 
-@file_bp.route("/api/health", methods=["GET"])
+@file_bp.route("/api/health", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/health", methods=["GET", "OPTIONS"], strict_slashes=False)
 def health():
+    if request.method == "OPTIONS":
+        return ("", 204)
     return jsonify({"status": "healthy", "timestamp": get_utc_now_iso()})
 
 
-@file_bp.route("/api/network-info", methods=["GET"])
+@file_bp.route("/api/network-info", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/network-info", methods=["GET", "OPTIONS"], strict_slashes=False)
 def network_info():
     """Get network info for LAN/WAN detection and signaling configuration."""
+    if request.method == "OPTIONS":
+        return ("", 204)
     return jsonify({
         "local_ips": get_local_ips(),
         "port": DEFAULT_PORT,
@@ -79,9 +93,13 @@ def network_info():
     })
 
 
-@file_bp.route("/api/upload", methods=["POST"])
+@file_bp.route("/api/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
 def upload_file():
     """Upload encrypted file blob with max 2 GB total size validation."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
     _rate_limiter.check("upload", _client_ip())
 
     if 'file' not in request.files:
@@ -101,9 +119,13 @@ def upload_file():
     return jsonify(result)
 
 
-@file_bp.route("/api/transfers/<transfer_id>/token/refresh", methods=["POST"])
+@file_bp.route("/api/transfers/<transfer_id>/token/refresh", methods=["POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/transfers/<transfer_id>/token/refresh", methods=["POST", "OPTIONS"], strict_slashes=False)
 def refresh_token(transfer_id):
     """Refresh transfer token / QR code. Enforces max refreshes per session."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
     _rate_limiter.check("refresh", _client_ip())
     try:
         result = _transfer_service.refresh_token(transfer_id)
@@ -121,17 +143,25 @@ def refresh_token(transfer_id):
         }), 429
 
 
-@file_bp.route("/api/file-info/<file_id>", methods=["GET"])
+@file_bp.route("/api/file-info/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/file-info/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 def get_file_info(file_id):
     """Get file metadata (no encrypted blob)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
     _rate_limiter.check("file_info", _client_ip())
     file_id = validate_file_id(file_id)
     return jsonify(_transfer_service.get_file_info(file_id))
 
 
-@file_bp.route("/api/download/<file_id>", methods=["GET"])
+@file_bp.route("/api/download/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/download/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 def download_file(file_id):
     """Download or preview encrypted file blob."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
     _rate_limiter.check("download", _client_ip())
     file_id = validate_file_id(file_id)
     preview = request.args.get("preview", "false").lower() == "true"
@@ -164,15 +194,22 @@ def download_file(file_id):
     return response
 
 
-@file_bp.route("/api/files/<file_id>", methods=["DELETE"])
+@file_bp.route("/api/files/<file_id>", methods=["DELETE", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/files/<file_id>", methods=["DELETE", "OPTIONS"], strict_slashes=False)
 def delete_file(file_id):
     """Delete file immediately."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
     file_id = validate_file_id(file_id)
     _transfer_service.delete_file(file_id)
     return jsonify({"message": "File deleted"})
 
 
-@file_bp.route("/api/stats", methods=["GET"])
+@file_bp.route("/api/stats", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/stats", methods=["GET", "OPTIONS"], strict_slashes=False)
 def get_stats():
     """Get server stats."""
+    if request.method == "OPTIONS":
+        return ("", 204)
     return jsonify(_transfer_service.get_stats())

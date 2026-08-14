@@ -1,12 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, File, X, Copy, Check, Shield, Lock, Key, Image as ImageIcon, Flame, Clock, ArrowLeft, Info, RefreshCw, AlertTriangle } from 'lucide-react'
+import {
+  Upload, File, X, Copy, Check, Shield, Lock, Key,
+  Image as ImageIcon, Flame, Clock, ArrowLeft, Info,
+  RefreshCw, AlertTriangle, Loader2
+} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { formatBytes, copyToClipboard } from '../crypto'
 import { TransferStateMachine, TransferState } from '../stateMachine'
 import { MAX_TOTAL_TRANSFER_SIZE } from '../fileManager'
 import { useFileUpload } from '../hooks/useFileUpload'
 import { useEncryptAndSend } from '../hooks/useEncryptAndSend'
+import { MeasurableProgressBar, ErrorAlert } from '../components/FeedbackStates'
 
 const MAX_REFRESHES = 5;
 
@@ -19,6 +24,7 @@ function UploadPage() {
 
   // Pre-Transfer Confirmation Modal State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
 
   // Vault Options
   const [useSteganography, setUseSteganography] = useState(true);
@@ -66,7 +72,6 @@ function UploadPage() {
   } = useEncryptAndSend(stateMachine);
 
   const error = fileError || sendError;
-
   const supportsMultiple = typeof document !== 'undefined' && 'multiple' in document.createElement('input');
 
   useEffect(() => {
@@ -85,7 +90,7 @@ function UploadPage() {
   };
 
   const openConfirmation = () => {
-    if (files.length === 0 || isOverLimit) return;
+    if (files.length === 0 || isOverLimit || isTransferring) return;
     setFileError(null);
     stateMachine.transitionTo(TransferState.VALIDATE);
     setShowConfirmModal(true);
@@ -93,7 +98,12 @@ function UploadPage() {
 
   const handleConfirmedSend = async () => {
     setShowConfirmModal(false);
-    await sendFiles({ files, useSteganography, burnOnRead, expiryHours, totalSelectedSize });
+    setIsTransferring(true);
+    try {
+      await sendFiles({ files, useSteganography, burnOnRead, expiryHours, totalSelectedSize });
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   const handleCopy = async () => {
@@ -108,6 +118,7 @@ function UploadPage() {
     clearFiles();
     resetSendState();
     setCopied(false);
+    setIsTransferring(false);
     stateMachine.transitionTo(TransferState.IDLE);
   };
 
@@ -122,7 +133,7 @@ function UploadPage() {
         <p>Pick single or multiple files (up to 2 GB total). Encrypted end-to-end in your browser.</p>
       </div>
 
-      <div className="wizard-steps">
+      <div className="wizard-steps" role="navigation" aria-label="Transfer Steps">
         <div className={`step ${files.length === 0 && !result ? 'active' : 'completed'}`}>
           <span className="step-num">1</span>
           <span className="step-label">Select Files</span>
@@ -147,6 +158,15 @@ function UploadPage() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            aria-label="Upload files drop zone. Click or drag and drop files here."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
           >
             <div className="drop-icon-wrapper">
               <Upload size={32} />
@@ -163,6 +183,7 @@ function UploadPage() {
               className="file-input"
               multiple={supportsMultiple}
               onChange={handleFileSelect}
+              aria-hidden="true"
             />
           </div>
 
@@ -172,7 +193,12 @@ function UploadPage() {
                 <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
                   Selected Files ({files.length})
                 </h4>
-                <button className="btn btn-secondary" onClick={handleClearAll} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleClearAll}
+                  disabled={isTransferring}
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                >
                   Clear All
                 </button>
               </div>
@@ -187,7 +213,13 @@ function UploadPage() {
                       <h4 style={{ fontSize: '0.9rem', wordBreak: 'break-all' }}>{f.name}</h4>
                       <p>{formatBytes(f.size)} • {f.type || 'File'}</p>
                     </div>
-                    <button className="btn btn-secondary" onClick={() => removeFile(idx)} aria-label="Remove file" style={{ padding: '0.4rem', flexShrink: 0 }}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => removeFile(idx)}
+                      disabled={isTransferring}
+                      aria-label={`Remove ${f.name}`}
+                      style={{ padding: '0.4rem', flexShrink: 0 }}
+                    >
                       <X size={16} />
                     </button>
                   </div>
@@ -210,7 +242,13 @@ function UploadPage() {
               <div className="vault-settings">
                 <h5 className="section-subtitle">Sharing Options</h5>
 
-                <div className={`vault-option-card ${burnOnRead ? 'active' : ''}`} onClick={() => setBurnOnRead(!burnOnRead)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setBurnOnRead(!burnOnRead)}>
+                <div
+                  className={`vault-option-card ${burnOnRead ? 'active' : ''}`}
+                  onClick={() => !isTransferring && setBurnOnRead(!burnOnRead)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setBurnOnRead(!burnOnRead)}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <Flame size={20} style={{ color: burnOnRead ? '#ef4444' : '#aaa', flexShrink: 0 }} />
@@ -221,11 +259,24 @@ function UploadPage() {
                         </span>
                       </div>
                     </div>
-                    <input type="checkbox" checked={burnOnRead} onChange={(e) => setBurnOnRead(e.target.checked)} style={{ accentColor: '#ef4444', flexShrink: 0 }} aria-label="Burn on read" />
+                    <input
+                      type="checkbox"
+                      checked={burnOnRead}
+                      disabled={isTransferring}
+                      onChange={(e) => setBurnOnRead(e.target.checked)}
+                      style={{ accentColor: '#ef4444', flexShrink: 0 }}
+                      aria-label="Burn on read"
+                    />
                   </div>
                 </div>
 
-                <div className={`vault-option-card ${useSteganography ? 'active' : ''}`} onClick={() => setUseSteganography(!useSteganography)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setUseSteganography(!useSteganography)}>
+                <div
+                  className={`vault-option-card ${useSteganography ? 'active' : ''}`}
+                  onClick={() => !isTransferring && setUseSteganography(!useSteganography)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseSteganography(!useSteganography)}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <ImageIcon size={20} style={{ color: useSteganography ? '#10b981' : '#aaa', flexShrink: 0 }} />
@@ -236,7 +287,14 @@ function UploadPage() {
                         </span>
                       </div>
                     </div>
-                    <input type="checkbox" checked={useSteganography} onChange={(e) => setUseSteganography(e.target.checked)} style={{ accentColor: '#10b981', flexShrink: 0 }} aria-label="Hide inside an image" />
+                    <input
+                      type="checkbox"
+                      checked={useSteganography}
+                      disabled={isTransferring}
+                      onChange={(e) => setUseSteganography(e.target.checked)}
+                      style={{ accentColor: '#10b981', flexShrink: 0 }}
+                      aria-label="Hide inside an image"
+                    />
                   </div>
                 </div>
 
@@ -246,6 +304,7 @@ function UploadPage() {
                   <select
                     id="expiry-select"
                     value={expiryHours}
+                    disabled={isTransferring}
                     onChange={(e) => setExpiryHours(Number(e.target.value))}
                   >
                     <option value={1}>1 hour</option>
@@ -256,15 +315,14 @@ function UploadPage() {
                 </div>
               </div>
 
+              {/* Progress Bar with Percentage and Stage */}
               {progress && (
-                <div className="progress-container">
-                  <div className="progress-bar">
-                    <div className="progress-fill green-fill" style={{ width: `${progress.percent}%` }} />
-                  </div>
-                  <div className="progress-text">
-                    <span>{statusMessage}</span>
-                    <span>{progress.percent}%</span>
-                  </div>
+                <div style={{ marginTop: '1.25rem' }}>
+                  <MeasurableProgressBar
+                    stage={progress.stage}
+                    percent={progress.percent}
+                    statusMessage={statusMessage}
+                  />
                 </div>
               )}
 
@@ -272,10 +330,19 @@ function UploadPage() {
                 <button
                   className="btn btn-primary"
                   onClick={openConfirmation}
-                  disabled={currentState !== TransferState.IDLE && currentState !== TransferState.SELECT && currentState !== TransferState.VALIDATE && currentState !== TransferState.SELECTING && currentState !== TransferState.VALIDATING}
+                  disabled={isTransferring || isOverLimit || files.length === 0}
+                  aria-busy={isTransferring}
                   style={{ flex: 1, minHeight: '48px' }}
                 >
-                  <Lock size={18} /> Review & Confirm Transfer
+                  {isTransferring ? (
+                    <>
+                      <Loader2 size={18} className="spin" /> Processing & Transferring...
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={18} /> Review & Confirm Transfer
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -283,15 +350,15 @@ function UploadPage() {
         </>
       )}
 
-      {error && (
-        <div className="status-message error" style={{ marginTop: '1.25rem' }}>
-          <AlertTriangle size={18} /> {error}
+      {error && !isTransferring && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <ErrorAlert message={error} onRetry={openConfirmation} />
         </div>
       )}
 
       {/* Pre-Transfer Confirmation Modal */}
       {showConfirmModal && (
-        <div className="preview-overlay">
+        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Confirm Transfer Details">
           <div className="preview-modal" style={{ maxWidth: '550px' }}>
             <div className="preview-header">
               <h3><Shield size={20} /> Confirm Transfer Details</h3>
@@ -384,7 +451,7 @@ function UploadPage() {
           </div>
 
           {shareUrl && (
-            <div className="qr-code-box animate-in">
+            <div className="qr-code-box animate-in" style={{ minHeight: '220px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <strong style={{ fontSize: '0.9rem', color: 'var(--foreground)' }}>Scan Code to Download</strong>
                 <span className="badge" style={{ background: refreshLimitReached ? 'rgba(239, 68, 68, 0.2)' : undefined, color: refreshLimitReached ? '#ef4444' : undefined }}>
