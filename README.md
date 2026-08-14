@@ -137,7 +137,7 @@ flowchart LR
 
     UI1 <-->|Socket.IO Signaling| SIG
     UI2 <-->|Socket.IO Signaling| SIG
-    W1 <===>|Direct WebRTC DataChannel| W2
+    W1 <-->|Direct WebRTC DataChannel| W2
     UI2 -->|REST GET /api/download| ROUTER
 ```
 
@@ -453,13 +453,15 @@ sequenceDiagram
     API->>TS: get_file_info("4be819d7")
     TS->>DBM: SELECT * FROM files WHERE id = ? AND expires_at > now()
     DBM-->>TS: Metadata record
-    TS-->>API-->>UI: Return JSON Metadata (name, size, iv, salt, burn_on_read)
+    TS-->>API: Return JSON Metadata (name, size, iv, salt, burn_on_read)
+    API-->>UI: Return JSON Metadata
 
     alt User clicks "30-Sec Preview" (Non-Destructive)
         UI->>API: GET /api/download/4be819d7?preview=true
         API->>TS: download_file("4be819d7", preview=True)
         TS->>SM: Stream ciphertext buffer without incrementing download_count
-        TS-->>API-->>UI: Ciphertext stream
+        TS-->>API: Ciphertext stream
+        API-->>UI: Ciphertext stream
         UI->>Crypto: decryptFile(encryptedData, password, iv, salt)
         Crypto-->>UI: Decrypted Uint8Array
         UI->>FM: unpackFiles(decryptedBytes) -> Single file or Bundle list
@@ -473,7 +475,8 @@ sequenceDiagram
         API->>TS: download_file("4be819d7", preview=False)
         TS->>DBM: Atomic UPDATE files SET download_count = download_count + 1 WHERE id = ?
         TS->>SM: Stream ciphertext buffer from disk
-        TS-->>API-->>UI: Ciphertext stream with headers
+        TS-->>API: Ciphertext stream with headers
+        API-->>UI: Ciphertext stream with headers
         opt If Burn-on-Read is active
             TS->>TS: purge_file("4be819d7") -> Atomically deletes file from disk and DB
         end
@@ -629,7 +632,7 @@ flowchart TD
     Cleanup --> Storage
     D1 <..>|ICE Resolution| STUN
     M1 <..>|Relay Fallback| TURN
-    D1 <===>|WebRTC DataChannel (Direct P2P)| M1
+    D1 <-->|WebRTC DataChannel (Direct P2P)| M1
 ```
 
 ---
