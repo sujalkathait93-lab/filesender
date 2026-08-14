@@ -1,0 +1,121 @@
+/**
+ * Unit & Integration Test Suite for:
+ * 1. File Manager (pack / unpack / detectFileType / size validation)
+ * 2. Preview Manager (30s countdown / MIME categorization / Object URL lifecycle)
+ * 3. Transfer State Machine (canonical pipeline and error state transitions)
+ */
+
+import { TransferStateMachine, TransferState } from '../frontend/src/stateMachine.js';
+import { detectFileType, validateFiles, packFiles, unpackFiles } from '../frontend/src/fileManager.js';
+import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../frontend/src/previewManager.js';
+
+let passed = 0;
+let failed = 0;
+
+function check(name, condition, extra = '') {
+  if (condition) {
+    passed++;
+    console.log(`  PASS  ${name}`);
+  } else {
+    failed++;
+    console.log(`  FAIL  ${name} ${extra}`);
+  }
+}
+
+async function runTests() {
+  console.log('== 1. File Manager & Type Detection ==');
+  check('image detection', detectFileType('photo.PNG').category === 'image' && detectFileType('photo.PNG').canPreviewDirectly === true);
+  check('video detection', detectFileType('movie.mp4').category === 'video' && detectFileType('movie.mp4').canPreviewDirectly === true);
+  check('audio detection', detectFileType('song.mp3').category === 'audio' && detectFileType('song.mp3').canPreviewDirectly === true);
+  check('pdf detection', detectFileType('report.pdf').category === 'pdf' && detectFileType('report.pdf').canPreviewDirectly === true);
+  check('text detection', detectFileType('code.py').category === 'text' && detectFileType('code.py').canPreviewDirectly === true);
+  check('doc unsupported direct preview', detectFileType('notes.docx').category === 'document' && detectFileType('notes.docx').canPreviewDirectly === false);
+  check('bin unsupported direct preview', detectFileType('setup.exe').category === 'other' && detectFileType('setup.exe').canPreviewDirectly === false);
+
+  console.log('== 2. File Size Validation (2 GB Limit) ==');
+  const validFiles = [
+    { name: 'f1.txt', size: 1024 * 1024 * 500 }, // 500 MB
+    { name: 'f2.txt', size: 1024 * 1024 * 500 }, // 500 MB
+  ];
+  const validRes = validateFiles(validFiles);
+  check('valid 1 GB total selection', validRes.valid === true && validRes.totalSize === 1024 * 1024 * 1000);
+
+  const oversizedFiles = [
+    { name: 'big.iso', size: 2.5 * 1024 * 1024 * 1024 } // 2.5 GB
+  ];
+  const overRes = validateFiles(oversizedFiles);
+  check('reject >2 GB selection', overRes.valid === false && overRes.error.includes('2 GB'));
+
+  console.log('== 3. Multi-File Bundle Packaging & Unpacking ==');
+  const f1Data = new TextEncoder().encode('Content of file 1');
+  const f2Data = new TextEncoder().encode('Content of file 2 with more data');
+  const f1 = new File([f1Data], 'file1.txt', { type: 'text/plain' });
+  const f2 = new File([f2Data], 'file2.txt', { type: 'text/plain' });
+
+  // Pack 2 files
+  const packRes = await packFiles([f1, f2]);
+  check('multi-file bundle created', packRes.isBundle === true && packRes.fileCount === 2);
+
+  const bundleBuffer = new Uint8Array(await packRes.blob.arrayBuffer());
+  const unpacked = unpackFiles(bundleBuffer);
+  check('unpacked file count matches', unpacked.isBundle === true && unpacked.files.length === 2);
+  check('unpacked file 1 content matches', new TextDecoder().decode(unpacked.files[0].data) === 'Content of file 1');
+  check('unpacked file 2 content matches', new TextDecoder().decode(unpacked.files[1].data) === 'Content of file 2 with more data');
+
+  console.log('== 4. State Machine Transitions ==');
+  const sm = new TransferStateMachine(TransferState.IDLE);
+  check('initial state IDLE', sm.getState() === TransferState.IDLE);
+
+  check('transition to SELECT', sm.transitionTo(TransferState.SELECT) === true && sm.getState() === TransferState.SELECT);
+  check('transition to VALIDATE', sm.transitionTo(TransferState.VALIDATE) === true && sm.getState() === TransferState.VALIDATE);
+  check('transition to PREPARE', sm.transitionTo(TransferState.PREPARE) === true && sm.getState() === TransferState.PREPARE);
+  check('transition to PROCESSING', sm.transitionTo(TransferState.PROCESSING) === true && sm.getState() === TransferState.PROCESSING);
+  check('transition to CREATING_TRANSFER', sm.transitionTo(TransferState.CREATING_TRANSFER) === true && sm.getState() === TransferState.CREATING_TRANSFER);
+  check('transition to WAITING_FOR_RECEIVER', sm.transitionTo(TransferState.WAITING_FOR_RECEIVER) === true && sm.getState() === TransferState.WAITING_FOR_RECEIVER);
+  check('transition to CONNECT', sm.transitionTo(TransferState.CONNECT) === true && sm.getState() === TransferState.CONNECT);
+  check('transition to TRANSFER', sm.transitionTo(TransferState.TRANSFER) === true && sm.getState() === TransferState.TRANSFER);
+  check('transition to VERIFY', sm.transitionTo(TransferState.VERIFY) === true && sm.getState() === TransferState.VERIFY);
+  check('transition to PREVIEW', sm.transitionTo(TransferState.PREVIEW) === true && sm.getState() === TransferState.PREVIEW);
+  check('transition to DOWNLOAD', sm.transitionTo(TransferState.DOWNLOAD) === true && sm.getState() === TransferState.DOWNLOAD);
+  check('transition to COMPLETE', sm.transitionTo(TransferState.COMPLETE) === true && sm.getState() === TransferState.COMPLETE);
+  check('COMPLETE is terminal', sm.isTerminal() === true);
+  check('transition to CLEANUP', sm.transitionTo(TransferState.CLEANUP) === true && sm.getState() === TransferState.CLEANUP);
+
+  // Test error states
+  const smError = new TransferStateMachine(TransferState.CONNECT);
+  check('transition to INVALID_TOKEN', smError.transitionTo(TransferState.INVALID_TOKEN) === true);
+  check('transition from error to IDLE', smError.transitionTo(TransferState.IDLE) === true);
+
+  console.log('== 5. Preview Manager Lifecycle & 30s Countdown ==');
+  let ticks = 0;
+  let expired = false;
+  const pm = new PreviewManager({
+    onTick: (s) => { ticks++; },
+    onExpire: () => { expired = true; }
+  });
+
+  const testFileItem = {
+    name: 'test_image.png',
+    size: 1024,
+    type: 'image/png',
+    data: new Uint8Array([1, 2, 3, 4]),
+    blob: new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' })
+  };
+
+  const preview = pm.preparePreview(testFileItem);
+  check('preview prepared for image', preview.category === 'image' && preview.canPreviewDirectly === true);
+  check('preview starts at 30 seconds', pm.getSecondsLeft() === PREVIEW_DURATION_SECONDS);
+
+  // Fast forward timer tick simulation
+  pm.stopCountdown();
+  pm.cleanup();
+  check('cleanup resets preview state', pm.currentPreview === null && pm.activeObjectUrls.size === 0);
+
+  console.log(`\n== ${passed} passed, ${failed} failed ==`);
+  process.exit(failed ? 1 : 0);
+}
+
+runTests().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -4,7 +4,8 @@
  * Avoids loading entire files into RAM by operating slice-by-slice.
  */
 
-import { encryptChunkData, decryptChunkData, getChunkIV, deriveKey } from './crypto';
+import { encryptChunkData, decryptChunkData, deriveKey } from './crypto';
+import { hexToBytes } from './hexUtils';
 
 export const DEFAULT_CHUNK_SIZE = 512 * 1024; // 512 KB per chunk
 export const MAX_TOTAL_TRANSFER_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
@@ -186,18 +187,12 @@ export class ReceiverChunkManager {
   async decryptAllFiles(password) {
     const results = [];
     for (const [fileId, fileStore] of this.filesMap.entries()) {
-      const ivHex = fileStore.meta.iv;
-      const saltHex = fileStore.meta.salt;
+      const iv = hexToBytes(fileStore.meta.iv);
+      const salt = hexToBytes(fileStore.meta.salt);
 
-      const ivMatches = ivHex ? ivHex.match(/.{2}/g) : null;
-      const saltMatches = saltHex ? saltHex.match(/.{2}/g) : null;
-
-      if (!ivMatches || !saltMatches) {
+      if (!iv || !salt) {
         throw new Error(`Invalid encryption IV/Salt metadata for file ${fileStore.meta.name}`);
       }
-
-      const iv = new Uint8Array(ivMatches.map(b => parseInt(b, 16)));
-      const salt = new Uint8Array(saltMatches.map(b => parseInt(b, 16)));
 
       const key = await deriveKey(password, salt);
       const assembled = await this.decryptAndAssembleFile(fileId, key, iv);

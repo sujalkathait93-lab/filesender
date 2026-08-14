@@ -1,10 +1,20 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick } from 'lucide-react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
-import UploadPage from './pages/Upload'
-import DownloadPage from './pages/Download'
 import './App.css'
+
+// Route-level code splitting: crypto/steganography/QR code only load when needed
+const UploadPage = lazy(() => import('./pages/Upload'))
+const DownloadPage = lazy(() => import('./pages/Download'))
+
+function PageLoader() {
+  return (
+    <div className="page-loader" role="status" aria-label="Loading">
+      <div className="spinner" />
+    </div>
+  );
+}
 
 function App() {
   const [serverOnline, setServerOnline] = useState(null);
@@ -14,6 +24,21 @@ function App() {
   useEffect(() => {
     detectServer();
   }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.classList.add('body-scroll-locked');
+    } else {
+      document.body.classList.remove('body-scroll-locked');
+    }
+    return () => document.body.classList.remove('body-scroll-locked');
+  }, [mobileOpen]);
 
   const detectServer = async () => {
     try {
@@ -40,7 +65,7 @@ function App() {
       <nav className="navbar">
         <Link to="/" className="nav-brand" onClick={() => setMobileOpen(false)}>
           <Shield className="logo-icon" size={24} />
-          <span>SecureShare</span>
+          <span>FileShare</span>
           <span className="badge">E2E Encrypted</span>
         </Link>
 
@@ -72,36 +97,41 @@ function App() {
         </button>
       </nav>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Drawer with Backdrop */}
       {mobileOpen && (
-        <div className="mobile-menu-drawer animate-in">
-          <div className="mobile-network-status">
-            <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
-              <div className="network-dot"></div>
-              <span>
-                {serverOnline === null ? 'Checking server...' : serverOnline ? 'Server Online' : 'Server Offline'}
-              </span>
+        <>
+          <div className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} />
+          <div className="mobile-menu-drawer animate-in">
+            <div className="mobile-network-status">
+              <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
+                <div className="network-dot"></div>
+                <span>
+                  {serverOnline === null ? 'Checking server...' : serverOnline ? 'Server Online' : 'Server Offline'}
+                </span>
+              </div>
             </div>
+            <Link to="/" className={navLinkClass('/')} onClick={() => setMobileOpen(false)}>
+              <Zap size={18} /> Home
+            </Link>
+            <Link to="/upload" className={navLinkClass('/upload')} onClick={() => setMobileOpen(false)}>
+              <Upload size={18} /> Send a File
+            </Link>
+            <Link to="/download" className={navLinkClass('/download')} onClick={() => setMobileOpen(false)}>
+              <Download size={18} /> Receive a File
+            </Link>
           </div>
-          <Link to="/" className={navLinkClass('/')} onClick={() => setMobileOpen(false)}>
-            <Zap size={18} /> Home
-          </Link>
-          <Link to="/upload" className={navLinkClass('/upload')} onClick={() => setMobileOpen(false)}>
-            <Upload size={18} /> Send a File
-          </Link>
-          <Link to="/download" className={navLinkClass('/download')} onClick={() => setMobileOpen(false)}>
-            <Download size={18} /> Receive a File
-          </Link>
-        </div>
+        </>
       )}
 
       {/* Main Content */}
       <main className="main-content">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/upload" element={<UploadPage />} />
-          <Route path="/download/:fileId?" element={<DownloadPage />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/download/:fileId?" element={<DownloadPage />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );

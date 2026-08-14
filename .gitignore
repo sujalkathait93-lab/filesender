@@ -1,29 +1,41 @@
-# Dependencies
+# ─── Dependencies ───────────────────────────────────────────────
 node_modules/
 frontend/node_modules/
 __pycache__/
 *.pyc
+*.pyo
 venv/
 .venv/
 env/
 
-# Build artifacts
+# ─── Build artifacts ────────────────────────────────────────────
 frontend/dist/
 dist/
 build/
+*.egg-info/
 
-# Environment and secrets
+# ─── Environment and secrets ───────────────────────────────────
 .env
-.env.local
+.env.*
 *.env
 
-# Local database & temp uploads
+# ─── Local database & uploads (runtime data) ───────────────────
+database/app.db
 *.db
-uploads/
-tmp/
+*.db-wal
+*.db-shm
+uploads/*
+!uploads/.gitkeep
 
-# IDE & OS
+# ─── IDE & OS ──────────────────────────────────────────────────
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+*~
+
+# ─── Logs ──────────────────────────────────────────────────────
+*.log
+npm-debug.log*

@@ -1,30 +1,21 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, File, X, Copy, Check, Shield, Lock, Key, Image as ImageIcon, Flame, Clock, ArrowLeft, Info, RefreshCw, AlertTriangle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { encryptFile, createTransferCode, formatBytes, copyToClipboard } from '../crypto'
-import { embedPayloadInImage } from '../steganography'
+import { formatBytes, copyToClipboard } from '../crypto'
 import { TransferStateMachine, TransferState } from '../stateMachine'
-import { validateFilesTotalSize, MAX_TOTAL_TRANSFER_SIZE } from '../chunkManager'
+import { MAX_TOTAL_TRANSFER_SIZE } from '../fileManager'
+import { useFileUpload } from '../hooks/useFileUpload'
+import { useEncryptAndSend } from '../hooks/useEncryptAndSend'
 
-// Steganography maximum single-image payload threshold (~10 MB)
-const STEGO_MAX_PAYLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_REFRESHES = 5;
 
 function UploadPage() {
   const navigate = useNavigate();
-  const [files, setFiles] = useState([]);
-  const [isDragging, setIsDragging] = useState(false);
   const [stateMachine] = useState(() => new TransferStateMachine(TransferState.IDLE));
   const [currentState, setCurrentState] = useState(TransferState.IDLE);
   const [statusMessage, setStatusMessage] = useState('Ready');
-  
-  const [progress, setProgress] = useState(null);
-  const [result, setResult] = useState(null);
-  const [shareUrl, setShareUrl] = useState('');
-  const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [stegoSkipped, setStegoSkipped] = useState(false);
 
   // Pre-Transfer Confirmation Modal State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -34,15 +25,48 @@ function UploadPage() {
   const [burnOnRead, setBurnOnRead] = useState(false);
   const [expiryHours, setExpiryHours] = useState(24);
 
-  // QR Code & Token Lifecycle State
-  const [refreshCount, setRefreshCount] = useState(0);
-  const [isRefreshingToken, setIsRefreshingToken] = useState(false);
-  const [refreshLimitReached, setRefreshLimitReached] = useState(false);
-
   const fileInputRef = useRef(null);
-  const API_URL = window.location.origin;
+  const copyTimerRef = useRef(null);
 
-  // Safe browser capability detection
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  // Custom Hooks
+  const {
+    files,
+    isDragging,
+    error: fileError,
+    setError: setFileError,
+    totalSelectedSize,
+    remainingCapacity,
+    isOverLimit,
+    addFiles,
+    removeFile,
+    clearFiles,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop
+  } = useFileUpload(stateMachine);
+
+  const {
+    progress,
+    result,
+    shareUrl,
+    stegoSkipped,
+    refreshCount,
+    isRefreshingToken,
+    refreshLimitReached,
+    error: sendError,
+    sendFiles,
+    refreshQRToken,
+    resetSendState
+  } = useEncryptAndSend(stateMachine);
+
+  const error = fileError || sendError;
+
   const supportsMultiple = typeof document !== 'undefined' && 'multiple' in document.createElement('input');
 
   useEffect(() => {
@@ -52,33 +76,6 @@ function UploadPage() {
     };
   }, [stateMachine]);
 
-  const calculateTotalSize = (fileList = files) => {
-    return fileList.reduce((acc, f) => acc + (f.size || 0), 0);
-  };
-
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e) => {
-    e.preventDefault();
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-      setIsDragging(false);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    setError(null);
-
-    const droppedFiles = Array.from(e.dataTransfer.files || []);
-    if (droppedFiles.length === 0) return;
-
-    addFiles(droppedFiles);
-  }, [files]);
-
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files || []);
     if (selectedFiles.length > 0) {
@@ -87,210 +84,32 @@ function UploadPage() {
     e.target.value = '';
   };
 
-  const addFiles = (newFiles) => {
-    const combined = [...files, ...newFiles];
-    const validation = validateFilesTotalSize(combined);
-
-    if (!validation.valid) {
-      setError(validation.error);
-      stateMachine.transitionTo(TransferState.SELECTING);
-      return;
-    }
-
-    setError(null);
-    setFiles(combined);
-    setResult(null);
-    setStegoSkipped(false);
-    stateMachine.transitionTo(TransferState.SELECTING);
-  };
-
-  const removeFile = (indexToRemove) => {
-    const updated = files.filter((_, idx) => idx !== indexToRemove);
-    setFiles(updated);
-    if (updated.length === 0) {
-      setError(null);
-      stateMachine.transitionTo(TransferState.IDLE);
-    } else {
-      const validation = validateFilesTotalSize(updated);
-      if (!validation.valid) setError(validation.error);
-      else setError(null);
-    }
-  };
-
   const openConfirmation = () => {
-    if (files.length === 0) return;
-    const validation = validateFilesTotalSize(files);
-    if (!validation.valid) {
-      setError(validation.error);
-      return;
-    }
-    setError(null);
-    stateMachine.transitionTo(TransferState.VALIDATING);
+    if (files.length === 0 || isOverLimit) return;
+    setFileError(null);
+    stateMachine.transitionTo(TransferState.VALIDATE);
     setShowConfirmModal(true);
   };
 
   const handleConfirmedSend = async () => {
     setShowConfirmModal(false);
-    if (files.length === 0) return;
-
-    stateMachine.transitionTo(TransferState.PREPARING);
-    setError(null);
-    setProgress({ stage: 'reading', percent: 5 });
-
-    try {
-      stateMachine.transitionTo(TransferState.PROCESSING);
-
-      // Process main file (or first file in multi-file collection)
-      const primaryFile = files[0];
-      const encrypted = await encryptFile(primaryFile, (p) => setProgress(p));
-
-      let uploadBlob = encrypted.encryptedBlob;
-      let uploadFileName = primaryFile.name + '.encrypted';
-
-      if (useSteganography) {
-        setProgress({ stage: 'steganography', percent: 75 });
-        if (encrypted.encryptedSize > STEGO_MAX_PAYLOAD_BYTES) {
-          setStegoSkipped(true);
-        } else {
-          try {
-            const payloadArrayBuffer = await encrypted.encryptedBlob.arrayBuffer();
-            const payloadBytes = new Uint8Array(payloadArrayBuffer);
-            uploadBlob = await embedPayloadInImage(null, payloadBytes);
-            uploadFileName = 'vault_' + Date.now() + '.png';
-          } catch (stegoErr) {
-            console.warn('Steganography skipped:', stegoErr.message);
-            setStegoSkipped(true);
-          }
-        }
-      }
-
-      stateMachine.transitionTo(TransferState.CREATING_TRANSFER);
-      setProgress({ stage: 'uploading', percent: 88 });
-
-      const formData = new FormData();
-      formData.append('file', uploadBlob, uploadFileName);
-      formData.append('iv', encrypted.iv);
-      formData.append('salt', encrypted.salt);
-      formData.append('original_name', primaryFile.name);
-      formData.append('original_size', encrypted.originalSize);
-      formData.append('compressed', '1');
-      formData.append('max_downloads', burnOnRead ? '1' : '10');
-      formData.append('burn_on_read', burnOnRead ? '1' : '0');
-      formData.append('expiry_hours', expiryHours.toString());
-      formData.append('sharing_mode', useSteganography && burnOnRead ? 'both' : useSteganography ? 'steganography' : burnOnRead ? 'burn_on_read' : 'standard');
-
-      const response = await fetch(`${API_URL}/api/upload`, {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        let errMsg = 'Upload failed. Please try again.';
-        try {
-          const errJson = await response.json();
-          if (errJson.detail) errMsg = typeof errJson.detail === 'string' ? errJson.detail : errMsg;
-        } catch (_) {}
-        throw new Error(errMsg);
-      }
-
-      const data = await response.json();
-      const transferCode = createTransferCode(data.file_id, encrypted.password);
-
-      let bestUrl = `${window.location.origin}/download?code=${encodeURIComponent(transferCode)}`;
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isLocal) {
-        try {
-          const netInfoRes = await fetch(`${API_URL}/api/network-info`);
-          if (netInfoRes.ok) {
-            const netData = await netInfoRes.json();
-            const lanIp = (netData.local_ips || []).find(ip => ip !== '127.0.0.1' && !ip.startsWith('127.'));
-            if (lanIp) {
-              bestUrl = `http://${lanIp}:5173/download?code=${encodeURIComponent(transferCode)}`;
-            }
-          }
-        } catch (e) {
-          console.warn("Failed to fetch network info for LAN sharing URL:", e);
-        }
-      }
-
-      setShareUrl(bestUrl);
-      setRefreshCount(0);
-      setRefreshLimitReached(false);
-      stateMachine.transitionTo(TransferState.WAITING_FOR_RECEIVER);
-      setProgress({ stage: 'complete', percent: 100 });
-
-      setResult({
-        fileId: data.file_id,
-        transferId: data.transfer_id || data.file_id,
-        transferCode,
-        expiresAt: data.expires_at,
-        originalSize: calculateTotalSize(),
-        fileCount: files.length,
-        isBurn: burnOnRead
-      });
-    } catch (err) {
-      setError(err.message || 'Something went wrong while uploading. Please try again.');
-      stateMachine.transitionTo(TransferState.FAILED);
-      setProgress(null);
-    }
-  };
-
-  const handleManualRefreshQR = async () => {
-    if (!result || isRefreshingToken || refreshLimitReached) return;
-
-    if (refreshCount >= MAX_REFRESHES) {
-      setRefreshLimitReached(true);
-      setError("QR refresh limit reached. Generate a new transfer.");
-      return;
-    }
-
-    setIsRefreshingToken(true);
-    try {
-      const res = await fetch(`${API_URL}/api/transfers/${result.transferId}/token/refresh`, {
-        method: 'POST'
-      });
-      if (res.status === 429) {
-        setRefreshLimitReached(true);
-        setError("QR refresh limit reached. Generate a new transfer.");
-        return;
-      }
-      if (res.ok) {
-        const data = await res.json();
-        setRefreshCount(data.refresh_count);
-        if (data.refresh_count >= MAX_REFRESHES) {
-          setRefreshLimitReached(true);
-        }
-      }
-    } catch (err) {
-      console.warn("QR refresh network error:", err);
-    } finally {
-      setIsRefreshingToken(false);
-    }
+    await sendFiles({ files, useSteganography, burnOnRead, expiryHours, totalSelectedSize });
   };
 
   const handleCopy = async () => {
     if (!result) return;
     await copyToClipboard(result.transferCode);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  const clearFiles = () => {
-    setFiles([]);
-    setResult(null);
-    setShareUrl('');
-    setError(null);
-    setProgress(null);
+  const handleClearAll = () => {
+    clearFiles();
+    resetSendState();
     setCopied(false);
-    setStegoSkipped(false);
-    setRefreshCount(0);
-    setRefreshLimitReached(false);
     stateMachine.transitionTo(TransferState.IDLE);
   };
-
-  const totalSelectedSize = calculateTotalSize();
-  const remainingCapacity = Math.max(0, MAX_TOTAL_TRANSFER_SIZE - totalSelectedSize);
-  const isOverLimit = totalSelectedSize > MAX_TOTAL_TRANSFER_SIZE;
 
   return (
     <div className="page-container animate-in">
@@ -349,11 +168,11 @@ function UploadPage() {
 
           {files.length > 0 && (
             <div className="file-info animate-in">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
                   Selected Files ({files.length})
                 </h4>
-                <button className="btn btn-secondary" onClick={clearFiles} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                <button className="btn btn-secondary" onClick={handleClearAll} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
                   Clear All
                 </button>
               </div>
@@ -364,11 +183,11 @@ function UploadPage() {
                     <div className="file-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', width: 36, height: 36 }}>
                       <File size={18} />
                     </div>
-                    <div className="file-details" style={{ flex: 1 }}>
-                      <h4 style={{ fontSize: '0.9rem' }}>{f.name}</h4>
+                    <div className="file-details" style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={{ fontSize: '0.9rem', wordBreak: 'break-all' }}>{f.name}</h4>
                       <p>{formatBytes(f.size)} • {f.type || 'File'}</p>
                     </div>
-                    <button className="btn btn-secondary" onClick={() => removeFile(idx)} aria-label="Remove file" style={{ padding: '0.4rem' }}>
+                    <button className="btn btn-secondary" onClick={() => removeFile(idx)} aria-label="Remove file" style={{ padding: '0.4rem', flexShrink: 0 }}>
                       <X size={16} />
                     </button>
                   </div>
@@ -376,7 +195,7 @@ function UploadPage() {
               </div>
 
               <div className="capacity-bar-container" style={{ margin: '1.25rem 0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--foreground-muted)', marginBottom: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--foreground-muted)', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
                   <span>Total Selected: {formatBytes(totalSelectedSize)}</span>
                   <span>Max Limit: 2 GB</span>
                 </div>
@@ -394,7 +213,7 @@ function UploadPage() {
                 <div className={`vault-option-card ${burnOnRead ? 'active' : ''}`} onClick={() => setBurnOnRead(!burnOnRead)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setBurnOnRead(!burnOnRead)}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <Flame size={20} style={{ color: burnOnRead ? '#ef4444' : '#aaa' }} />
+                      <Flame size={20} style={{ color: burnOnRead ? '#ef4444' : '#aaa', flexShrink: 0 }} />
                       <div>
                         <strong style={{ fontSize: '0.95rem' }}>Burn-on-Read</strong>
                         <span style={{ fontSize: '0.8rem', display: 'block', color: 'var(--foreground-muted)' }}>
@@ -402,14 +221,14 @@ function UploadPage() {
                         </span>
                       </div>
                     </div>
-                    <input type="checkbox" checked={burnOnRead} onChange={(e) => setBurnOnRead(e.target.checked)} style={{ accentColor: '#ef4444' }} aria-label="Burn on read" />
+                    <input type="checkbox" checked={burnOnRead} onChange={(e) => setBurnOnRead(e.target.checked)} style={{ accentColor: '#ef4444', flexShrink: 0 }} aria-label="Burn on read" />
                   </div>
                 </div>
 
                 <div className={`vault-option-card ${useSteganography ? 'active' : ''}`} onClick={() => setUseSteganography(!useSteganography)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setUseSteganography(!useSteganography)}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <ImageIcon size={20} style={{ color: useSteganography ? '#10b981' : '#aaa' }} />
+                      <ImageIcon size={20} style={{ color: useSteganography ? '#10b981' : '#aaa', flexShrink: 0 }} />
                       <div>
                         <strong style={{ fontSize: '0.95rem' }}>Image/Steganography Disguise</strong>
                         <span style={{ fontSize: '0.8rem', display: 'block', color: 'var(--foreground-muted)' }}>
@@ -417,12 +236,12 @@ function UploadPage() {
                         </span>
                       </div>
                     </div>
-                    <input type="checkbox" checked={useSteganography} onChange={(e) => setUseSteganography(e.target.checked)} style={{ accentColor: '#10b981' }} aria-label="Hide inside an image" />
+                    <input type="checkbox" checked={useSteganography} onChange={(e) => setUseSteganography(e.target.checked)} style={{ accentColor: '#10b981', flexShrink: 0 }} aria-label="Hide inside an image" />
                   </div>
                 </div>
 
                 <div className="expiry-row">
-                  <Clock size={18} style={{ color: 'var(--foreground-muted)' }} />
+                  <Clock size={18} style={{ color: 'var(--foreground-muted)', flexShrink: 0 }} />
                   <label htmlFor="expiry-select">Code expires after</label>
                   <select
                     id="expiry-select"
@@ -453,7 +272,7 @@ function UploadPage() {
                 <button
                   className="btn btn-primary"
                   onClick={openConfirmation}
-                  disabled={currentState !== TransferState.IDLE && currentState !== TransferState.SELECTING && currentState !== TransferState.VALIDATING}
+                  disabled={currentState !== TransferState.IDLE && currentState !== TransferState.SELECT && currentState !== TransferState.VALIDATE && currentState !== TransferState.SELECTING && currentState !== TransferState.VALIDATING}
                   style={{ flex: 1, minHeight: '48px' }}
                 >
                   <Lock size={18} /> Review & Confirm Transfer
@@ -487,7 +306,7 @@ function UploadPage() {
 
               <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
                 <label>Selected Files</label>
-                <span>{files.length} file(s) ({files.map(f => f.name).join(', ')})</span>
+                <span style={{ wordBreak: 'break-all' }}>{files.length} file(s) ({files.map(f => f.name).join(', ')})</span>
               </div>
               <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
                 <label>Total Size</label>
@@ -549,7 +368,7 @@ function UploadPage() {
 
           {result.isBurn && (
             <div className="burn-banner">
-              <Flame size={24} style={{ color: '#ef4444' }} />
+              <Flame size={24} style={{ color: '#ef4444', flexShrink: 0 }} />
               <div>
                 <strong style={{ fontSize: '0.95rem', display: 'block', color: '#fca5a5' }}>Burn-on-Read Active</strong>
                 <span style={{ fontSize: '0.82rem', color: 'rgba(254, 202, 202, 0.8)' }}>
@@ -566,7 +385,7 @@ function UploadPage() {
 
           {shareUrl && (
             <div className="qr-code-box animate-in">
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <strong style={{ fontSize: '0.9rem', color: 'var(--foreground)' }}>Scan Code to Download</strong>
                 <span className="badge" style={{ background: refreshLimitReached ? 'rgba(239, 68, 68, 0.2)' : undefined, color: refreshLimitReached ? '#ef4444' : undefined }}>
                   Refreshes: {refreshCount}/{MAX_REFRESHES}
@@ -580,7 +399,7 @@ function UploadPage() {
               {!refreshLimitReached && (
                 <button
                   className="btn btn-secondary"
-                  onClick={handleManualRefreshQR}
+                  onClick={refreshQRToken}
                   disabled={isRefreshingToken}
                   style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', gap: '0.4rem' }}
                 >
@@ -600,7 +419,7 @@ function UploadPage() {
             {copied ? <><Check size={18} /> Copied!</> : <><Copy size={18} /> Copy Code</>}
           </button>
 
-          <button className="btn btn-secondary" onClick={clearFiles} style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem', minHeight: '48px' }}>
+          <button className="btn btn-secondary" onClick={handleClearAll} style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem', minHeight: '48px' }}>
             Send Another Transfer
           </button>
         </div>
@@ -616,4 +435,4 @@ function UploadPage() {
   );
 }
 
-export default UploadPage
+export default UploadPage;

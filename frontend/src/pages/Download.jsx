@@ -1,41 +1,75 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Download, Lock, Shield, AlertTriangle, Check, Key, Flame, Eye, X, ArrowLeft, FileText, Info, Copy, Clock } from 'lucide-react'
-import { decryptFile, extractKeyFromUrl, parseTransferCode, formatBytes } from '../crypto'
-import { extractPayloadFromImage } from '../steganography'
+import {
+  Download, Lock, Shield, AlertTriangle, Check, Key, Flame,
+  Eye, X, ArrowLeft, FileText, Info, Copy, Clock,
+  Image as ImageIcon, Video, Music, FileCode, File
+} from 'lucide-react'
+import { parseTransferCode, extractKeyFromUrl, formatBytes } from '../crypto'
 import { TransferStateMachine, TransferState } from '../stateMachine'
+import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../previewManager'
+import { useDownload } from '../hooks/useDownload'
 
 function DownloadPage() {
   const { fileId: urlFileId } = useParams();
   const navigate = useNavigate();
-  const [codeInput, setCodeInput] = useState(urlFileId || '');
-  const [fileInfo, setFileInfo] = useState(null);
   const [stateMachine] = useState(() => new TransferStateMachine(TransferState.IDLE));
   const [currentState, setCurrentState] = useState(TransferState.IDLE);
   const [statusMessage, setStatusMessage] = useState('Ready');
+  const [codeInput, setCodeInput] = useState(urlFileId || '');
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDecrypting, setIsDecrypting] = useState(false);
-  const [progress, setProgress] = useState(null);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-  const [isBurned, setIsBurned] = useState(false);
-  const [manualKey, setManualKey] = useState('');
-  const [needsKey, setNeedsKey] = useState(false);
-  const [decryptedBlobUrl, setDecryptedBlobUrl] = useState(null);
-
-  // Search guards
+  // Search guards (avoid duplicate requests)
   const searchInFlightRef = useRef(false);
   const lastSearchedCodeRef = useRef(null);
 
-  // 30-Second Image Preview State
-  const [previewContent, setPreviewContent] = useState(null);
-  const [previewType, setPreviewType] = useState(null);
+  // 30-Second Preview State
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [previewSecondsLeft, setPreviewSecondsLeft] = useState(30);
-  const previewTimerRef = useRef(null);
+  const [previewSecondsLeft, setPreviewSecondsLeft] = useState(PREVIEW_DURATION_SECONDS);
+  const [activePreviewItem, setActivePreviewItem] = useState(null);
+  const [previewBundleFiles, setPreviewBundleFiles] = useState([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
 
-  const API_URL = window.location.origin;
+  const previewManagerRef = useRef(null);
+
+  const {
+    fileInfo,
+    isLoading,
+    isDecrypting,
+    progress,
+    error,
+    success,
+    isBurned,
+    manualKey,
+    needsKey,
+    decryptedFiles,
+    decryptedBlobUrl,
+    setManualKey,
+    searchCode,
+    executeDownload,
+    resetDownloadState,
+    revokeDecryptedUrl
+  } = useDownload(stateMachine);
+
+  // Initialize Preview Manager
+  useEffect(() => {
+    previewManagerRef.current = new PreviewManager({
+      onTick: (secs) => setPreviewSecondsLeft(secs),
+      onExpire: () => {
+        setShowPreviewModal(false);
+        setActivePreviewItem(null);
+      },
+      onClose: () => {
+        setShowPreviewModal(false);
+        setActivePreviewItem(null);
+      }
+    });
+
+    return () => {
+      if (previewManagerRef.current) {
+        previewManagerRef.current.cleanup();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     stateMachine.onStateChange = ({ currentState, userMessage }) => {
@@ -44,250 +78,35 @@ function DownloadPage() {
     };
   }, [stateMachine]);
 
+  // Auto-search when arriving with ?code=... in the URL
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const codeParam = searchParams.get('code');
     const key = extractKeyFromUrl();
-    if (key) {
-      setManualKey(key);
-    }
     const codeToUse = codeParam || urlFileId;
-    if (codeToUse && lastSearchedCodeRef.current !== codeToUse) {
+    if (codeToUse && lastSearchedCodeRef.current !== codeToUse && !searchInFlightRef.current) {
       lastSearchedCodeRef.current = codeToUse;
       setCodeInput(codeToUse);
-      handleSearchCode(codeToUse, key);
+      searchCode(codeToUse, key);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlFileId]);
 
-  // 30-Second Preview Countdown Timer & Revocation
-  useEffect(() => {
-    if (showPreviewModal && previewType === 'image') {
-      setPreviewSecondsLeft(30);
-      previewTimerRef.current = setInterval(() => {
-        setPreviewSecondsLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(previewTimerRef.current);
-            closeAndRevokePreview();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
-    }
-
-    return () => {
-      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
-    };
-  }, [showPreviewModal, previewType]);
-
   const closeAndRevokePreview = () => {
     setShowPreviewModal(false);
-    if (previewContent && (previewType === 'image' || previewType === 'pdf')) {
-      try {
-        URL.revokeObjectURL(previewContent);
-      } catch (_) {}
+    if (previewManagerRef.current) {
+      previewManagerRef.current.close();
     }
-    setPreviewContent(null);
-    setPreviewType(null);
-    setPreviewSecondsLeft(30);
+    setActivePreviewItem(null);
+    setPreviewSecondsLeft(PREVIEW_DURATION_SECONDS);
   };
 
-  const handleSearchCode = async (targetCode, targetKey = null) => {
+  const handleSearchCode = (targetCode, targetKey = null) => {
     if (searchInFlightRef.current) return;
-    const code = (targetCode || codeInput).trim();
-    if (!code) return;
-
-    const parsed = parseTransferCode(code);
-    const activeKey = targetKey || parsed.key || extractKeyFromUrl();
-    if (activeKey) {
-      setManualKey(activeKey);
-    } else {
-      setManualKey('');
-    }
-
     searchInFlightRef.current = true;
-    setIsLoading(true);
-    setError(null);
-    setIsBurned(false);
-    setFileInfo(null);
-    setSuccess(false);
-    setProgress(null);
-    stateMachine.transitionTo(TransferState.CONNECTING);
-
-    if (!parsed.fileId) {
-      setError('Invalid transfer code format. Please check and try again.');
-      stateMachine.transitionTo(TransferState.FAILED);
+    searchCode(targetCode || codeInput, targetKey).finally(() => {
       searchInFlightRef.current = false;
-      setIsLoading(false);
-      return;
-    }
-
-    await fetchServerFileInfo(parsed.fileId, activeKey);
-
-    searchInFlightRef.current = false;
-    setIsLoading(false);
-  };
-
-  const fetchServerFileInfo = async (id, activeKey) => {
-    try {
-      const response = await fetch(`${API_URL}/api/file-info/${id}`);
-      if (response.status === 410) {
-        setIsBurned(true);
-        setError('This file has self-destructed and is permanently unavailable.');
-        stateMachine.transitionTo(TransferState.EXPIRED);
-        return;
-      }
-      if (!response.ok) {
-        setError('Transfer session not found or expired. Please check the code.');
-        stateMachine.transitionTo(TransferState.FAILED);
-        return;
-      }
-
-      const data = await response.json();
-      setFileInfo(data);
-      setNeedsKey(!activeKey);
-      stateMachine.transitionTo(TransferState.DOWNLOAD_READY);
-    } catch (err) {
-      setError('Could not reach server. Please check your network connection.');
-      stateMachine.transitionTo(TransferState.FAILED);
-    }
-  };
-
-  const processServerDecrypt = async (triggerBrowserSave = true) => {
-    if (!fileInfo) return;
-
-    const key = manualKey.trim() || extractKeyFromUrl();
-    if (!key) {
-      setNeedsKey(true);
-      setError('Decryption key required. Please paste the decryption key.');
-      return;
-    }
-
-    setIsDecrypting(true);
-    setError(null);
-    stateMachine.transitionTo(TransferState.TRANSFERRING);
-    setProgress({ stage: 'downloading', percent: 10 });
-
-    try {
-      const downloadEndpoint = triggerBrowserSave
-        ? `${API_URL}/api/download/${fileInfo.id}`
-        : `${API_URL}/api/download/${fileInfo.id}?preview=true`;
-
-      const response = await fetch(downloadEndpoint);
-      if (response.status === 410) {
-        setIsBurned(true);
-        throw new Error('This file has self-destructed (Burn-on-Read active).');
-      }
-      if (!response.ok) {
-        let errMsg = 'Download failed.';
-        try {
-          const errJson = await response.json();
-          if (errJson.detail) errMsg = typeof errJson.detail === 'string' ? errJson.detail : errMsg;
-        } catch (_) {}
-        throw new Error(errMsg);
-      }
-
-      const isBurnHeader = response.headers.get('X-Burn-On-Read') === '1';
-
-      const reader = response.body.getReader();
-      const contentLength = response.headers.get('Content-Length');
-      const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-      let receivedBytes = 0;
-      const chunks = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        chunks.push(value);
-        receivedBytes += value.length;
-
-        if (totalBytes > 0) {
-          const percent = Math.min(99, Math.round((receivedBytes / totalBytes) * 70));
-          setProgress({ stage: 'downloading', percent });
-        } else {
-          setProgress({ stage: 'downloading', percent: 40 });
-        }
-      }
-
-      const blobData = new Blob(chunks);
-      stateMachine.transitionTo(TransferState.VERIFYING);
-      setProgress({ stage: 'decrypting', percent: 75 });
-
-      let encryptedPayloadBlob = blobData;
-      try {
-        const extractedBytes = await extractPayloadFromImage(blobData);
-        encryptedPayloadBlob = new Blob([extractedBytes]);
-        setProgress({ stage: 'steganography_extracted', percent: 85 });
-      } catch (_) {}
-
-      const decryptedData = await decryptFile(
-        encryptedPayloadBlob,
-        key,
-        fileInfo.iv,
-        fileInfo.salt,
-        (p) => {
-          const basePercent = p.stage === 'complete' ? 100 : 85 + Math.round(p.percent * 0.15);
-          setProgress({ stage: p.stage, percent: basePercent });
-        }
-      );
-
-      const ext = fileInfo.original_name.split('.').pop().toLowerCase();
-      const isText = ['txt', 'csv', 'json', 'js', 'py', 'html', 'md', 'xml', 'log'].includes(ext);
-      const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
-      const isPdf = ext === 'pdf';
-
-      const mimeType = fileInfo.mime_type || 'application/octet-stream';
-      const decryptedBlob = new Blob([decryptedData], { type: mimeType });
-      const url = window.URL.createObjectURL(decryptedBlob);
-      setDecryptedBlobUrl(url);
-
-      if (!triggerBrowserSave) {
-        if (isText) {
-          const textStr = new TextDecoder().decode(decryptedData);
-          setPreviewContent(textStr);
-          setPreviewType('text');
-        } else if (isImg) {
-          setPreviewContent(url);
-          setPreviewType('image');
-        } else if (isPdf) {
-          setPreviewContent(url);
-          setPreviewType('pdf');
-        } else {
-          const textStr = new TextDecoder().decode(decryptedData.slice(0, 10000));
-          setPreviewContent(textStr);
-          setPreviewType('text');
-        }
-        setShowPreviewModal(true);
-      } else {
-        // Automatic download trigger
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileInfo.original_name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        if (isBurnHeader || fileInfo.burn_on_read) {
-          setIsBurned(true);
-        }
-      }
-
-      stateMachine.transitionTo(TransferState.COMPLETED);
-      setSuccess(true);
-      setProgress({ stage: 'complete', percent: 100 });
-    } catch (err) {
-      if (!isBurned) {
-        setError(err.message || 'Decryption failed. Please check the code/key.');
-      }
-      stateMachine.transitionTo(TransferState.FAILED);
-      setProgress(null);
-    } finally {
-      setIsDecrypting(false);
-    }
+    });
   };
 
   const handlePasteClipboard = async () => {
@@ -297,7 +116,6 @@ function DownloadPage() {
         const val = text.trim();
         setCodeInput(val);
         const parsed = parseTransferCode(val);
-        if (parsed.key) setManualKey(parsed.key);
         handleSearchCode(val, parsed.key);
       }
     } catch (_) {}
@@ -305,14 +123,39 @@ function DownloadPage() {
 
   const handleNewSearch = () => {
     closeAndRevokePreview();
-    setFileInfo(null);
-    setError(null);
-    setSuccess(false);
-    setIsBurned(false);
-    setProgress(null);
+    revokeDecryptedUrl();
+    resetDownloadState();
     setCodeInput('');
-    setDecryptedBlobUrl(null);
     stateMachine.transitionTo(TransferState.IDLE);
+  };
+
+  const handlePreviewReady = (firstFile, unpacked) => {
+    if (!previewManagerRef.current) return;
+    const allFiles = unpacked?.files || [firstFile];
+    setPreviewBundleFiles(allFiles);
+    setActivePreviewIndex(0);
+
+    const prepared = previewManagerRef.current.preparePreview(firstFile);
+    setActivePreviewItem(prepared);
+    setShowPreviewModal(true);
+  };
+
+  const handleSelectPreviewFile = (index) => {
+    if (!previewBundleFiles[index] || !previewManagerRef.current) return;
+    setActivePreviewIndex(index);
+    const prepared = previewManagerRef.current.preparePreview(previewBundleFiles[index]);
+    setActivePreviewItem(prepared);
+  };
+
+  const getCategoryIcon = (category) => {
+    switch (category) {
+      case 'image': return <ImageIcon size={22} />;
+      case 'video': return <Video size={22} />;
+      case 'audio': return <Music size={22} />;
+      case 'text': return <FileCode size={22} />;
+      case 'pdf': return <FileText size={22} />;
+      default: return <File size={22} />;
+    }
   };
 
   return (
@@ -323,7 +166,7 @@ function DownloadPage() {
 
       <div className="page-header">
         <h2><Download /> Receive Files</h2>
-        <p>Paste the transfer code to connect, verify, and download.</p>
+        <p>Paste the transfer code to connect, verify, preview, and download.</p>
       </div>
 
       <div className="download-input">
@@ -343,13 +186,13 @@ function DownloadPage() {
       </div>
 
       {isLoading && (
-        <div className="status-message info">
+        <div className="status-message info" role="status">
           <Shield size={18} className="spin" /> {statusMessage}...
         </div>
       )}
 
       {error && (
-        <div className="status-message error">
+        <div className="status-message error" role="alert">
           <AlertTriangle size={18} /> {error}
         </div>
       )}
@@ -425,14 +268,14 @@ function DownloadPage() {
             <div className="action-row" style={{ marginTop: '1.25rem' }}>
               <button
                 className="btn btn-secondary"
-                onClick={() => processServerDecrypt(false)}
+                onClick={() => executeDownload(false, handlePreviewReady)}
                 style={{ flex: 1, minHeight: '48px' }}
               >
-                <Eye size={18} /> 30-Sec Image Preview
+                <Eye size={18} /> 30-Sec Preview
               </button>
               <button
                 className="btn btn-primary"
-                onClick={() => processServerDecrypt(true)}
+                onClick={() => executeDownload(true)}
                 style={{ flex: 1.2, minHeight: '48px' }}
               >
                 <Lock size={18} /> Save & Download
@@ -443,7 +286,7 @@ function DownloadPage() {
       )}
 
       {progress && !success && (
-        <div className="progress-container" style={{ marginTop: '1.25rem' }}>
+        <div className="progress-container" style={{ marginTop: '1.25rem' }} role="progressbar" aria-valuenow={progress.percent} aria-valuemin="0" aria-valuemax="100">
           <div className="progress-bar">
             <div className="progress-fill green-fill" style={{ width: `${progress.percent}%` }} />
           </div>
@@ -467,18 +310,34 @@ function DownloadPage() {
                 <FileText size={20} />
               </div>
               <div className="success-file-text">
-                <strong className="success-file-name">{fileInfo.original_name}</strong>
+                <strong className="success-file-name">
+                  {decryptedFiles.length > 1
+                    ? `${decryptedFiles.length} files saved (${fileInfo.original_name})`
+                    : fileInfo.original_name}
+                </strong>
                 <span className="success-file-size">{formatBytes(fileInfo.original_size)}</span>
               </div>
             </div>
           </div>
+
+          {isBurned && (
+            <div className="burn-banner" style={{ background: 'rgba(220, 38, 38, 0.2)', borderColor: '#ef4444', marginTop: '1.25rem' }}>
+              <Flame size={24} style={{ color: '#ef4444' }} />
+              <div>
+                <strong style={{ fontSize: '1rem', color: '#f87171' }}>File Self-Destructed & Purged!</strong>
+                <p style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '0.2rem' }}>
+                  The server permanently deleted this file after your download.
+                </p>
+              </div>
+            </div>
+          )}
 
           {decryptedBlobUrl && (
             <a
               href={decryptedBlobUrl}
               download={fileInfo.original_name}
               className="btn btn-primary btn-lg"
-              style={{ width: '100%', justifyContent: 'center', minHeight: '48px', textDecoration: 'none' }}
+              style={{ width: '100%', justifyContent: 'center', minHeight: '48px', textDecoration: 'none', marginTop: '1rem' }}
             >
               <Download size={20} /> Save File to Downloads
             </a>
@@ -502,36 +361,140 @@ function DownloadPage() {
         </div>
       )}
 
-      {/* 30-Second Image Preview Modal */}
-      {showPreviewModal && (
+      {/* Universal 30-Second Preview Modal for ALL file types */}
+      {showPreviewModal && activePreviewItem && (
         <div className="preview-overlay">
           <div className="preview-modal">
             <div className="preview-header">
-              <h3><Eye size={20} /> Preview: {fileInfo?.original_name}</h3>
-              {previewType === 'image' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#ef4444', fontWeight: 700, fontSize: '0.9rem' }}>
-                  <Clock size={16} /> Expires in: {previewSecondsLeft}s
-                </div>
-              )}
+              <h3>
+                {getCategoryIcon(activePreviewItem.category)}
+                <span>Preview: {activePreviewItem.fileName}</span>
+              </h3>
+
+              {/* 30-Second Countdown Badge */}
+              <div className="preview-timer-badge">
+                <Clock size={16} />
+                <span>{previewSecondsLeft}s remaining</span>
+              </div>
+
               <button className="preview-close" onClick={closeAndRevokePreview} aria-label="Close preview">
                 <X size={20} />
               </button>
             </div>
+
+            {/* Multi-file selector bar if transfer has multiple files */}
+            {previewBundleFiles.length > 1 && (
+              <div className="preview-bundle-bar">
+                {previewBundleFiles.map((f, i) => (
+                  <button
+                    key={i}
+                    className={`preview-bundle-tab ${i === activePreviewIndex ? 'active' : ''}`}
+                    onClick={() => handleSelectPreviewFile(i)}
+                  >
+                    {f.name} ({formatBytes(f.size)})
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="preview-body">
-              {previewType === 'text' && (
-                <pre className="preview-text">{previewContent}</pre>
-              )}
-              {previewType === 'image' && (
+              {/* Image Preview */}
+              {activePreviewItem.category === 'image' && (
                 <div style={{ textAlign: 'center' }}>
-                  <img src={previewContent} alt="30-Second Temporary Preview" className="preview-image" />
+                  <img
+                    src={activePreviewItem.content}
+                    alt="30-Second Temporary Preview"
+                    className="preview-image"
+                  />
                 </div>
               )}
-              {previewType === 'pdf' && (
-                <iframe src={previewContent} title="PDF Preview" className="preview-pdf" />
+
+              {/* Video Preview */}
+              {activePreviewItem.category === 'video' && (
+                <div style={{ textAlign: 'center' }}>
+                  <video
+                    src={activePreviewItem.content}
+                    controls
+                    autoPlay
+                    className="preview-video"
+                    playsInline
+                  >
+                    Your browser does not support video playback.
+                  </video>
+                </div>
+              )}
+
+              {/* Audio Preview */}
+              {activePreviewItem.category === 'audio' && (
+                <div className="preview-audio-wrapper">
+                  <Music size={48} style={{ color: '#10b981', marginBottom: '1rem' }} />
+                  <p style={{ fontWeight: 600, marginBottom: '1rem' }}>{activePreviewItem.fileName}</p>
+                  <audio
+                    src={activePreviewItem.content}
+                    controls
+                    autoPlay
+                    className="preview-audio"
+                  >
+                    Your browser does not support audio playback.
+                  </audio>
+                </div>
+              )}
+
+              {/* PDF Preview */}
+              {activePreviewItem.category === 'pdf' && (
+                <iframe
+                  src={activePreviewItem.content}
+                  title="PDF Preview"
+                  className="preview-pdf"
+                />
+              )}
+
+              {/* Text / Code Preview */}
+              {activePreviewItem.category === 'text' && (
+                <pre className="preview-text">{activePreviewItem.content}</pre>
+              )}
+
+              {/* Unsupported format / Document metadata info screen */}
+              {!activePreviewItem.canPreviewDirectly && (
+                <div className="preview-unsupported-card">
+                  <div className="preview-unsupported-icon">
+                    <FileText size={40} />
+                  </div>
+                  <h4>{activePreviewItem.fileName}</h4>
+                  <p className="preview-unsupported-desc">
+                    This file format ({activePreviewItem.mimeType || 'binary'}) cannot be rendered directly inside the browser viewport.
+                  </p>
+
+                  <div className="preview-meta-table">
+                    <div className="preview-meta-row">
+                      <span className="label">File Size:</span>
+                      <span className="val">{formatBytes(activePreviewItem.fileSize)}</span>
+                    </div>
+                    <div className="preview-meta-row">
+                      <span className="label">MIME Type:</span>
+                      <span className="val">{activePreviewItem.mimeType}</span>
+                    </div>
+                    <div className="preview-meta-row">
+                      <span className="label">Encryption:</span>
+                      <span className="val" style={{ color: '#10b981' }}>Verified AES-256-GCM</span>
+                    </div>
+                    <div className="preview-meta-row">
+                      <span className="label">Preview Session:</span>
+                      <span className="val" style={{ color: '#ef4444' }}>Auto-expires in {previewSecondsLeft}s</span>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
+
             <div className="preview-footer">
-              <button className="btn btn-primary" onClick={() => { closeAndRevokePreview(); processServerDecrypt(true); }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  closeAndRevokePreview();
+                  executeDownload(true);
+                }}
+              >
                 <Download size={16} /> Save & Download File
               </button>
               <button className="btn btn-secondary" onClick={closeAndRevokePreview}>

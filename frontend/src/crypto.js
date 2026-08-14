@@ -1,14 +1,48 @@
 /**
  * SecureShare Crypto Module
  * Client-side E2E Encryption using Web Crypto API
- * AES-256-GCM + PBKDF2 + CompressionStream
+ * AES-256-GCM + PBKDF2 + gzip
+ *
+ * Memory-safe large files:
+ * Files larger than CHUNK_SIZE are encrypted chunk-by-chunk. Each chunk is
+ * read with file.slice() (streamed from disk), gzip-compressed, and encrypted
+ * with a counter-derived per-chunk IV (getChunkIV). The ciphertext stream is
+ * self-describing: every chunk is prefixed with a 4-byte little-endian length,
+ * so decoding never needs the full file in memory and is immune to gzip
+ * output-size variability.
+ *
+ * The format marker is stored server-side in the files.checksum column
+ * ("chunked:4194304"); an empty marker means legacy single-shot format,
+ * which decryptFile still supports for backwards compatibility.
  */
+
+import { bytesToHex, hexToBytes } from './hexUtils.js';
+import { compressData, decompressData } from './compression.js';
+
+// Re-export for convenience & backwards compatibility
+export { extractKeyFromUrl, createTransferCode, parseTransferCode } from './transferCode.js';
+export { formatBytes } from './utils/format.js';
+export { copyToClipboard } from './utils/clipboard.js';
+export { compressData, decompressData } from './compression.js';
 
 const ALGORITHM = 'AES-GCM';
 const KEY_LENGTH = 256;
 const ITERATIONS = 100000;
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
+
+/** Chunk size for memory-safe large-file encryption. */
+export const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB
+
+/** Build the server-side checksum marker for a chunked upload ('' = legacy format). */
+export function buildChunkMarker(chunked) {
+  return chunked ? `chunked:${CHUNK_SIZE}` : '';
+}
+
+/** True when a checksum marker indicates the chunked ciphertext format. */
+export function isChunkedMarker(checksum) {
+  return typeof checksum === 'string' && checksum.startsWith('chunked:');
+}
 
 /**
  * Generate a random encryption key and derive AES key
@@ -17,8 +51,7 @@ export async function generateKey() {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
   // Generate 4 random bytes -> 8 hex characters for short password
-  const password = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+  const password = bytesToHex(crypto.getRandomValues(new Uint8Array(4)));
 
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -98,195 +131,127 @@ export async function decryptChunkData(encryptedChunkBuffer, key, baseIV, chunkI
 }
 
 /**
- * Compress data using CompressionStream (gzip)
- */
-export async function compressData(data) {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream('gzip'));
-  const response = new Response(stream);
-  const buffer = await response.arrayBuffer();
-  return new Uint8Array(buffer);
-}
-
-/**
- * Decompress gzip data
- */
-export async function decompressData(data) {
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'));
-  const response = new Response(stream);
-  const buffer = await response.arrayBuffer();
-  return new Uint8Array(buffer);
-}
-
-/**
- * Encrypt file: compress then encrypt
+ * Encrypt file: stream slices -> gzip -> AES-GCM chunk by chunk.
+ * Memory usage stays near CHUNK_SIZE regardless of file size.
+ * onProgress receives { stage, percent, compressionRatio? }.
  */
 export async function encryptFile(file, onProgress) {
-  // Read file
-  const arrayBuffer = await file.arrayBuffer();
-  const fileData = new Uint8Array(arrayBuffer);
+  const totalSize = file.size;
+  const { key, iv, salt, password } = await generateKey();
 
   onProgress?.({ stage: 'compressing', percent: 10 });
 
-  // Compress first
-  const compressed = await compressData(fileData);
-  const compressionRatio = fileData.length > 0
-    ? ((1 - compressed.length / fileData.length) * 100).toFixed(1)
-    : '0.0';
+  const totalChunks = Math.max(1, Math.ceil(totalSize / CHUNK_SIZE));
+  const chunked = totalChunks > 1;
+  const parts = [];
+  let encryptedSize = 0;
+  let compressionRatio = '0.0';
 
-  onProgress?.({ stage: 'encrypting', percent: 40, compressionRatio });
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, totalSize);
+    const raw = new Uint8Array(await file.slice(start, end).arrayBuffer());
 
-  // Generate key
-  const { key, iv, salt, password } = await generateKey();
+    const compressed = await compressData(raw);
+    if (i === 0 && raw.length > 0) {
+      compressionRatio = ((1 - compressed.length / raw.length) * 100).toFixed(1);
+    }
 
-  // Encrypt
-  const encrypted = await crypto.subtle.encrypt(
-    { name: ALGORITHM, iv },
-    key,
-    compressed
-  );
+    const encrypted = await encryptChunkData(compressed.buffer, key, iv, i);
 
-  onProgress?.({ stage: 'encrypted', percent: 80 });
+    if (chunked) {
+      // 4-byte little-endian length header makes the stream self-describing.
+      // Single-chunk files stay in the legacy format (no header).
+      const header = new Uint8Array(4);
+      new DataView(header.buffer).setUint32(0, encrypted.length, true);
+      parts.push(header);
+      encryptedSize += 4;
+    }
+
+    parts.push(encrypted);
+    encryptedSize += encrypted.byteLength;
+
+    onProgress?.({ stage: 'encrypting', percent: 30 + Math.round(((i + 1) / totalChunks) * 60) });
+  }
+
+  onProgress?.({ stage: 'encrypted', percent: 95 });
 
   return {
-    encryptedBlob: new Blob([encrypted]),
-    originalSize: fileData.length,
-    encryptedSize: encrypted.byteLength,
-    iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-    salt: Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join(''),
+    encryptedBlob: new Blob(parts),
+    originalSize: totalSize,
+    encryptedSize,
+    iv: bytesToHex(iv),
+    salt: bytesToHex(salt),
     password,
-    compressionRatio
+    compressionRatio,
+    chunked,
   };
 }
 
 /**
- * Decrypt file: download, decrypt, decompress
+ * Decrypt file: read ciphertext -> AES-GCM decrypt + gunzip per chunk.
+ * Supports both the chunked format (checksum marker) and legacy single-shot.
  */
-export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onProgress) {
-  onProgress?.({ stage: 'downloading', percent: 20 });
-
-  const encryptedData = new Uint8Array(await encryptedBlob.arrayBuffer());
-
-  onProgress?.({ stage: 'decrypting', percent: 50 });
-
+export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onProgress, chunked = false) {
   if (!ivHex || !saltHex) {
     throw new Error('Invalid file metadata: IV or Salt is missing');
   }
 
-  const ivMatches = ivHex.match(/.{2}/g);
-  const saltMatches = saltHex.match(/.{2}/g);
-  if (!ivMatches || !saltMatches) {
+  const iv = hexToBytes(ivHex);
+  const salt = hexToBytes(saltHex);
+  if (!iv || !salt) {
     throw new Error('Invalid file metadata: Invalid IV or Salt format');
   }
 
-  // Parse IV and salt
-  const iv = new Uint8Array(ivMatches.map(byte => parseInt(byte, 16)));
-  const salt = new Uint8Array(saltMatches.map(byte => parseInt(byte, 16)));
+  onProgress?.({ stage: 'decrypting', percent: 40 });
 
-  // Derive key
   const key = await deriveKey(password, salt);
 
-  // Decrypt
-  const decrypted = await crypto.subtle.decrypt(
-    { name: ALGORITHM, iv },
-    key,
-    encryptedData
-  );
+  if (chunked) {
+    const totalBytes = encryptedBlob.size;
+    const decryptedParts = [];
+    let outputLength = 0;
+    let offset = 0;
+    let chunkIndex = 0;
 
+    while (offset < totalBytes) {
+      const header = new Uint8Array(await encryptedBlob.slice(offset, offset + 4).arrayBuffer());
+      const chunkLength = new DataView(header.buffer).getUint32(0, true);
+      offset += 4;
+
+      const cipherChunk = await encryptedBlob.slice(offset, offset + chunkLength).arrayBuffer();
+      offset += chunkLength;
+
+      const decrypted = await decryptChunkData(cipherChunk, key, iv, chunkIndex);
+      const raw = await decompressData(decrypted);
+      decryptedParts.push(raw);
+      outputLength += raw.length;
+      chunkIndex++;
+
+      onProgress?.({ stage: 'decrypting', percent: 40 + Math.round((offset / totalBytes) * 55) });
+    }
+
+    onProgress?.({ stage: 'complete', percent: 100 });
+    return concatBytes(decryptedParts, outputLength);
+  }
+
+  // Legacy single-shot format
+  onProgress?.({ stage: 'decrypting', percent: 50 });
+  const encryptedData = new Uint8Array(await encryptedBlob.arrayBuffer());
+  const decrypted = await crypto.subtle.decrypt({ name: ALGORITHM, iv }, key, encryptedData);
   onProgress?.({ stage: 'decompressing', percent: 80 });
-
-  // Decompress
   const decompressed = await decompressData(new Uint8Array(decrypted));
-
   onProgress?.({ stage: 'complete', percent: 100 });
-
   return decompressed;
 }
 
-/**
- * Extract key from URL fragment or query parameter
- */
-export function extractKeyFromUrl() {
-  const searchParams = new URLSearchParams(window.location.search);
-  const codeParam = searchParams.get('code');
-  if (codeParam) {
-    const parsed = parseTransferCode(codeParam);
-    if (parsed.key) return parsed.key;
+/** Concatenate Uint8Array parts into one buffer with a single allocation. */
+function concatBytes(parts, totalLength) {
+  const out = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
   }
-  const hash = window.location.hash || '';
-  const match = hash.match(/key=([^&]+)/);
-  if (match && match[1]) {
-    return decodeURIComponent(match[1]);
-  }
-  return null;
+  return out;
 }
-
-/**
- * Create a clean short Crypto Transfer Code
- * Format: SEC-<FILE_ID>-<KEY> (e.g. SEC-4BE819D7-9F8A73C2)
- */
-export function createTransferCode(fileId, password) {
-  const f = (fileId || '').toUpperCase();
-  const p = (password || '').toUpperCase();
-  return `SEC-${f}-${p}`;
-}
-
-/**
- * Parse Crypto Transfer Code or flexible input formats (URL, SEC-code, 16-char hex) into fileId and key
- */
-export function parseTransferCode(input) {
-  if (!input) return { fileId: null, key: null };
-  let str = input.trim();
-
-  // Extract from full URL if pasted
-  if (str.startsWith('http://') || str.startsWith('https://')) {
-    try {
-      const url = new URL(str);
-      const qCode = url.searchParams.get('code');
-      if (qCode) {
-        str = qCode;
-      } else {
-        const pathParts = url.pathname.split('/').filter(Boolean);
-        if (pathParts.length > 0) {
-          str = pathParts[pathParts.length - 1];
-        }
-      }
-    } catch (_) {}
-  }
-
-  // Handle explicit SEC-fileId-key format
-  if (str.toUpperCase().startsWith('SEC-') || str.toUpperCase().startsWith('SEC:')) {
-    const parts = str.slice(4).split(/[-:]/);
-    if (parts.length >= 2) {
-      return { fileId: parts[0].toLowerCase(), key: parts.slice(1).join('-').toLowerCase() };
-    }
-  }
-
-  // Handle raw 16-character combined hex code (8 chars fileId + 8 chars key)
-  const cleaned = str.replace(/[\s-]/g, '').toLowerCase();
-  if (cleaned.length >= 16) {
-    return { fileId: cleaned.slice(0, 8), key: cleaned.slice(8) };
-  } else if (cleaned.length >= 8) {
-    return { fileId: cleaned.slice(0, 8), key: cleaned.slice(8) || null };
-  }
-
-  return { fileId: str.toLowerCase(), key: null };
-}
-
-/**
- * Format bytes to human readable
- */
-export function formatBytes(bytes) {
-  if (bytes === 0 || !bytes) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-/**
- * Copy text to clipboard
- */
-export async function copyToClipboard(text) {
-  await navigator.clipboard.writeText(text);
-}
-

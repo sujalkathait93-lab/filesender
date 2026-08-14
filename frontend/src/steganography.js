@@ -1,5 +1,5 @@
 /**
- * SecureShare Steganography Module
+ * FileShare Steganography Module
  * Encodes/decodes binary payloads directly into Canvas ImageData pixel channels (LSB)
  */
 
@@ -60,7 +60,7 @@ export function createDefaultCoverCanvas(width = 600, height = 400) {
   // Vault badge watermark text
   ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
   ctx.font = '600 14px monospace';
-  ctx.fillText('SECURESHARE STEGANO VAULT', 20, height - 20);
+  ctx.fillText('FILESHARE STEGANO VAULT', 20, height - 20);
 
   return canvas;
 }

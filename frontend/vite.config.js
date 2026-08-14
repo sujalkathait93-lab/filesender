@@ -10,11 +10,25 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true
+      },
+      '/socket.io': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        ws: true
       }
     }
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: false,
+    // Split vendor code so route-level chunks stay small and cacheable
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          qrcode: ['qrcode.react']
+        }
+      }
+    }
   }
 })
