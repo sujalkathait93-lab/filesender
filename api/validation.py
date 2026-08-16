@@ -71,7 +71,7 @@ def validate_upload_form(form: dict) -> dict:
         raise ValidationError("Invalid checksum marker")
 
     access_hash = (form.get("access_hash") or "").strip().lower()
-    if not HEX_STR_RE.match(access_hash) or len(access_hash) != 64:
+    if access_hash and (not HEX_STR_RE.match(access_hash) or len(access_hash) != 64):
         raise ValidationError("access_hash must be a 64-character hex SHA-256 digest")
 
     return {

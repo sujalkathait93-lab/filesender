@@ -75,8 +75,9 @@ class CleanupService:
                     except OSError:
                         pass
 
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Cleanup pass failed: %s", e)
         finally:
             if conn:
                 try:

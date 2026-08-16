@@ -346,7 +346,7 @@ function UploadPage() {
                       type="checkbox"
                       checked={burnOnRead}
                       disabled={isTransferring}
-                      onChange={(e) => setBurnOnRead(e.target.checked)}
+                      onChange={(e) => { e.stopPropagation(); setBurnOnRead(e.target.checked); }}
                       style={{ accentColor: '#ef4444', flexShrink: 0 }}
                       aria-label="Burn on read"
                     />
@@ -374,7 +374,7 @@ function UploadPage() {
                       type="checkbox"
                       checked={useSteganography}
                       disabled={isTransferring}
-                      onChange={(e) => setUseSteganography(e.target.checked)}
+                      onChange={(e) => { e.stopPropagation(); setUseSteganography(e.target.checked); }}
                       style={{ accentColor: '#10b981', flexShrink: 0 }}
                       aria-label="Hide inside an image"
                     />
@@ -398,7 +398,7 @@ function UploadPage() {
                         </span>
                       </div>
                     </div>
-                    <input type="checkbox" checked={useP2P} disabled={isTransferring} onChange={(e) => setUseP2P(e.target.checked)} style={{ accentColor: '#5E6AD2', flexShrink: 0 }} aria-label="Direct P2P same time" />
+                    <input type="checkbox" checked={useP2P} disabled={isTransferring} onChange={(e) => { e.stopPropagation(); setUseP2P(e.target.checked); }} style={{ accentColor: '#5E6AD2', flexShrink: 0 }} aria-label="Direct P2P same time" />
                   </div>
                 </div>
 

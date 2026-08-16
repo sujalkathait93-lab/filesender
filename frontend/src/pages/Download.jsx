@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Download, Lock, Shield, Check, Key, Flame,
@@ -107,14 +107,14 @@ function DownloadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlFileId]);
 
-  const closeAndRevokePreview = () => {
+  const closeAndRevokePreview = useCallback(() => {
     setShowPreviewModal(false);
     if (previewManagerRef.current) {
       previewManagerRef.current.close();
     }
     setActivePreviewItem(null);
     setPreviewSecondsLeft(PREVIEW_DURATION_SECONDS);
-  };
+  }, []);
 
   useEffect(() => {
     if (!showPreviewModal) return undefined;

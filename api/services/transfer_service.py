@@ -303,8 +303,9 @@ class TransferService:
             conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
             conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("purge_file DB cleanup failed for %s: %s", file_id, e)
         finally:
             conn.close()
 
