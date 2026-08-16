@@ -146,8 +146,12 @@ export class WebRTCSession {
 
   setupDataChannelEvents() {
     this.dataChannel.onopen = () => {
-      this.onStatus('WebRTC DataChannel connected! Starting transfer...');
+      this.onStatus('WebRTC DataChannel connected.');
       if (this.role === 'sender') {
+        if (!this.fileMeta || !this.rawCompressedData) {
+          this.onStatus('Peer connected. REST download remains the reliable path.');
+          return;
+        }
         this.sendTransferMeta();
         this.senderChannel = new SenderChannel({
           dataChannel: this.dataChannel,

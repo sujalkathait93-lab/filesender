@@ -15,9 +15,9 @@ from datetime import timedelta
 
 from api.database import DatabaseManager
 from api.storage import StorageManager
-from api.utils import generate_id, get_utc_now
-from api.config import MAX_FILE_SIZE, MAX_REFRESHES_PER_SESSION
-from api.errors import NotFoundError, GoneError, ConflictError
+from api.config import MAX_FILE_SIZE, MAX_REFRESHES_PER_SESSION, MAX_PREVIEWS_PER_FILE
+from api.utils import generate_id, generate_owner_token, hash_token, tokens_match, proofs_match, get_utc_now
+from api.errors import NotFoundError, GoneError, ConflictError, ForbiddenError
 
 
 class TransferService:
@@ -46,9 +46,11 @@ class TransferService:
         sharing_mode = form_data["sharing_mode"]
         transfer_id = form_data["transfer_id"]
         checksum = (form_data.get("checksum") or "").strip()[:64]
+        access_hash = form_data["access_hash"]
 
         file_id = generate_id()
         transfer_id = transfer_id or file_id
+        owner_token = generate_owner_token()
         file_path = self.storage.get_file_path(file_id)
 
         # Stream write with size enforcement (never loads the entire blob into RAM)
@@ -74,17 +76,17 @@ class TransferService:
                 INSERT INTO transfers (id, token_hash, status, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
                 VALUES (?, ?, 'active', ?, ?, 1, ?, 0, 5, ?)
                 ON CONFLICT(id) DO UPDATE SET total_size = total_size + excluded.total_size, file_count = file_count + 1
-            """, (transfer_id, file_id, expires_at.isoformat(), original_size, sharing_mode, burn_on_read))
+            """, (transfer_id, hash_token(owner_token), expires_at.isoformat(), original_size, sharing_mode, burn_on_read))
 
             # Insert file metadata
             conn.execute("""
                 INSERT INTO files (id, transfer_id, filename, original_name, original_size, encrypted_size,
-                                  mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
+                                  mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read, status, access_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)
             """, (
                 file_id, transfer_id, file_obj.filename or "file.encrypted", original_name, original_size, encrypted_size,
                 file_obj.content_type or "application/octet-stream", expires_at.isoformat(),
-                effective_max_downloads, iv, salt, compressed, checksum, burn_on_read
+                effective_max_downloads, iv, salt, compressed, checksum, burn_on_read, access_hash
             ))
 
             conn.commit()
@@ -101,7 +103,8 @@ class TransferService:
             "expires_at": expires_at.isoformat(),
             "refresh_count": 0,
             "max_refreshes": MAX_REFRESHES_PER_SESSION,
-            "qr_data": file_id
+            "qr_data": file_id,
+            "owner_token": owner_token,
         }
 
     # ─── Token refresh ──────────────────────────────────────────────────────
@@ -113,14 +116,12 @@ class TransferService:
         """
         conn = self.db.get_connection()
         try:
-            new_token_hash = generate_id()
-            # Atomic counter bump that only succeeds while under the limit
             row = conn.execute("""
                 UPDATE transfers
-                SET refresh_count = refresh_count + 1, token_hash = ?
+                SET refresh_count = refresh_count + 1
                 WHERE id = ? AND refresh_count < max_refreshes
                 RETURNING refresh_count, max_refreshes
-            """, (new_token_hash, transfer_id)).fetchone()
+            """, (transfer_id,)).fetchone()
 
             if not row:
                 # Either the transfer is missing, or the limit was reached.
@@ -139,7 +140,6 @@ class TransferService:
                 "transfer_id": transfer_id,
                 "refresh_count": row["refresh_count"],
                 "max_refreshes": row["max_refreshes"],
-                "token_hash": new_token_hash,
                 "message": f"Token refreshed ({row['refresh_count']}/{row['max_refreshes']})"
             }
         finally:
@@ -147,11 +147,20 @@ class TransferService:
 
     # ─── File info ──────────────────────────────────────────────────────────
 
-    def get_file_info(self, file_id: str) -> dict:
+    def _require_access_proof(self, row, proof: str):
+        stored = ""
+        try:
+            stored = row["access_hash"] or ""
+        except (IndexError, KeyError):
+            stored = ""
+        if not proofs_match(proof, stored):
+            raise ForbiddenError("Access proof required")
+
+    def get_file_info(self, file_id: str, proof: str = "") -> dict:
         """
         Get file metadata (no blob).
-        Raises NotFoundError if missing/expired.
-        Raises GoneError if burned/max downloads reached.
+        Raises NotFoundError if missing.
+        Raises GoneError if expired or burned/max downloads reached.
         """
         conn = self.db.get_connection()
         try:
@@ -173,10 +182,16 @@ class TransferService:
                     ).fetchone()
 
             if not row:
-                raise NotFoundError("File not found or expired")
+                # Check if it was in the DB but expired
+                expired_check = conn.execute("SELECT id FROM files WHERE id = ? OR transfer_id = ?", (file_id, file_id)).fetchone()
+                if expired_check:
+                    raise GoneError("Transfer has expired")
+                raise NotFoundError("Transfer not found or expired")
 
-            if row["download_count"] >= row["max_downloads"] or row["status"] == "burned":
+            if (row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]) or row["status"] == "burned":
                 raise GoneError("File has been burned/deleted after reading")
+
+            self._require_access_proof(row, proof)
 
             return {
                 "id": row["id"],
@@ -200,7 +215,7 @@ class TransferService:
 
     # ─── Download ───────────────────────────────────────────────────────────
 
-    def download_file(self, file_id: str, preview: bool = False):
+    def download_file(self, file_id: str, preview: bool = False, proof: str = ""):
         """
         Prepare file for download. Increments counter atomically unless preview.
         Returns (row_dict, file_path, is_burn).
@@ -213,12 +228,27 @@ class TransferService:
             ).fetchone()
 
             if not row:
+                expired_check = conn.execute("SELECT id FROM files WHERE id = ?", (file_id,)).fetchone()
+                if expired_check:
+                    raise GoneError("Transfer has expired")
                 raise NotFoundError("File not found or expired")
 
             if row["status"] == "burned":
                 raise GoneError("File has self-destructed (Burn-on-Read active)")
 
-            if not preview:
+            self._require_access_proof(row, proof)
+
+            if preview:
+                preview_updated = conn.execute("""
+                    UPDATE files
+                    SET preview_count = COALESCE(preview_count, 0) + 1
+                    WHERE id = ? AND COALESCE(preview_count, 0) < ?
+                """, (file_id, MAX_PREVIEWS_PER_FILE))
+                if preview_updated.rowcount == 0:
+                    raise GoneError("Preview limit reached for this transfer")
+                conn.commit()
+                new_count = row["download_count"]
+            elif row["max_downloads"] > 0:
                 # Atomic limit-enforcing increment (safe under concurrent downloads)
                 updated = conn.execute("""
                     UPDATE files
@@ -230,9 +260,15 @@ class TransferService:
                 conn.commit()
                 new_count = row["download_count"] + 1
             else:
-                new_count = row["download_count"]
+                conn.execute("""
+                    UPDATE files
+                    SET download_count = download_count + 1
+                    WHERE id = ?
+                """, (file_id,))
+                conn.commit()
+                new_count = row["download_count"] + 1
 
-            is_burn = False if preview else (bool(row["burn_on_read"]) or (new_count >= row["max_downloads"]))
+            is_burn = False if preview else (bool(row["burn_on_read"]) or (row["max_downloads"] > 0 and new_count >= row["max_downloads"]))
         finally:
             conn.close()
 
@@ -267,16 +303,36 @@ class TransferService:
             conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
             conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
             conn.commit()
-        except Exception as e:
-            print(f"Purge DB error for {file_id}: {e}")
+        except Exception:
+            pass
         finally:
             conn.close()
 
-    def delete_file(self, file_id: str):
-        """Delete file immediately (admin action)."""
+    def delete_file(self, file_id: str, owner_token: str):
+        """Delete a file when the sender presents the owner token from upload."""
+        if not owner_token:
+            raise ForbiddenError("Owner token required")
+
         conn = self.db.get_connection()
         try:
+            row = conn.execute(
+                "SELECT transfer_id FROM files WHERE id = ?",
+                (file_id,),
+            ).fetchone()
+            if not row:
+                raise NotFoundError("File not found")
+
+            transfer_id = row["transfer_id"] or file_id
+            t_row = conn.execute(
+                "SELECT token_hash FROM transfers WHERE id = ?",
+                (transfer_id,),
+            ).fetchone()
+            stored_hash = t_row["token_hash"] if t_row else None
+            if not tokens_match(owner_token, stored_hash or ""):
+                raise ForbiddenError("Owner token required")
+
             conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
+            conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
             conn.commit()
         finally:
             conn.close()
@@ -285,22 +341,10 @@ class TransferService:
     # ─── Stats ──────────────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
-        """Get server statistics."""
-        conn = self.db.get_connection()
-        try:
-            now_iso = get_utc_now().isoformat()
-            total = conn.execute("SELECT COUNT(*) as count FROM files").fetchone()["count"]
-            active = conn.execute(
-                "SELECT COUNT(*) as count FROM files WHERE expires_at > ?",
-                (now_iso,)
-            ).fetchone()["count"]
-        finally:
-            conn.close()
-
+        """Public limits only — do not leak live file counts."""
         return {
-            "total_files": total,
-            "active_files": active,
             "max_file_size": MAX_FILE_SIZE,
             "max_refreshes": MAX_REFRESHES_PER_SESSION,
+            "max_previews": MAX_PREVIEWS_PER_FILE,
             "server_time": get_utc_now().isoformat()
         }

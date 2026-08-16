@@ -1,5 +1,5 @@
 """
-SecureShare - End-to-End Encrypted File Sharing API & WebRTC Signaling Server
+FileShare - End-to-End Encrypted File Sharing API & WebRTC Signaling Server
 Main application entry point & factory.
 
 Responsibilities:
@@ -24,7 +24,8 @@ from flask_socketio import SocketIO
 
 from api.config import (
     SECRET_KEY, DB_PATH, UPLOAD_DIR, DEFAULT_PORT,
-    CORS_EXPOSE_HEADERS, MAX_FILE_SIZE, CLEANUP_INTERVAL_SECONDS
+    CORS_EXPOSE_HEADERS, MAX_FILE_SIZE, CLEANUP_INTERVAL_SECONDS,
+    FRONTEND_ORIGIN
 )
 from api.database import DatabaseManager
 from api.storage import StorageManager
@@ -86,18 +87,19 @@ def create_app():
     app.config['SECRET_KEY'] = SECRET_KEY
     app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE + 1024 * 1024  # 2 GB + multipart overhead
 
-    # CORS configuration
+    cors_origins = FRONTEND_ORIGIN if FRONTEND_ORIGIN != "*" else "*"
+    allow_credentials = FRONTEND_ORIGIN != "*"
     CORS(
         app,
-        resources={r"/*": {"origins": "*"}},
-        supports_credentials=True,
+        resources={r"/*": {"origins": cors_origins}},
+        supports_credentials=allow_credentials,
         expose_headers=CORS_EXPOSE_HEADERS
     )
 
     # SocketIO setup
     socketio = SocketIO(
         app,
-        cors_allowed_origins="*",
+        cors_allowed_origins=cors_origins,
         async_mode="threading",
         logger=False,
         engineio_logger=False
@@ -126,6 +128,9 @@ def create_app():
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+        )
         return response
 
     # Centralized error handling

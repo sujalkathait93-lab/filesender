@@ -23,9 +23,9 @@ async function parseResponse(response) {
 }
 
 /** Simple GET returning parsed JSON. */
-async function getJson(path) {
+async function getJson(path, headers = {}) {
   const response = await fetch(`${API_URL}${path}`, {
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...headers },
   });
   return parseResponse(response);
 }
@@ -77,9 +77,15 @@ function uploadFormData(path, formData, onProgress) {
 }
 
 /** Fetch the encrypted blob with progress; returns { blob, headers }. */
-async function downloadBlob(fileId, { preview = false, onProgress } = {}) {
+async function downloadBlob(fileId, { preview = false, onProgress, proof } = {}) {
+  const params = new URLSearchParams();
+  if (preview) params.set('preview', 'true');
+  const qs = params.toString();
+  const headers = { Accept: 'application/octet-stream' };
+  if (proof) headers['X-Access-Proof'] = proof;
   const response = await fetch(
-    `${API_URL}/api/download/${fileId}${preview ? '?preview=true' : ''}`
+    `${API_URL}/api/download/${fileId}${qs ? `?${qs}` : ''}`,
+    { headers }
   );
 
   if (!response.ok) {
@@ -124,9 +130,20 @@ export const api = {
   health: () => getJson('/api/health'),
   networkInfo: () => getJson('/api/network-info'),
   stats: () => getJson('/api/stats'),
-  fileInfo: (id) => getJson(`/api/file-info/${encodeURIComponent(id)}`),
+  fileInfo: (id, proof) => getJson(`/api/file-info/${encodeURIComponent(id)}`, proof ? { 'X-Access-Proof': proof } : {}),
   refreshToken: (transferId) => postJson(`/api/transfers/${encodeURIComponent(transferId)}/token/refresh`),
-  deleteFile: (id) => fetch(`${API_URL}/api/files/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  deleteFile: (id, ownerToken) => fetch(`${API_URL}/api/files/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'X-Owner-Token': ownerToken || '', Accept: 'application/json' },
+  }).then(async (response) => {
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const err = new Error((body && body.detail) || `Delete failed (${response.status})`);
+      err.status = response.status;
+      throw err;
+    }
+    return response.json().catch(() => ({ message: 'File deleted' }));
+  }),
   upload: (formData, onProgress) => uploadFormData('/api/upload', formData, onProgress),
   download: downloadBlob,
 };

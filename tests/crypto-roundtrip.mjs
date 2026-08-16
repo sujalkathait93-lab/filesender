@@ -30,8 +30,9 @@ async function main() {
   check('isChunkedMarker detects', isChunkedMarker('chunked:4194304') === true);
   check('isChunkedMarker rejects legacy', isChunkedMarker('') === false);
 
-  const decBig = await decryptFile(enc.encryptedBlob, enc.password, enc.iv, enc.salt, null, true);
+  const decBig = await decryptFile(enc.encryptedBlob, enc.password, enc.iv, enc.salt, null, true, enc.compressed);
   check('large file round-trips byte-identical', decBig.length === big.length && decBig.every((b, i) => b === big[i]));
+  check('password is 16 hex chars', /^[0-9a-f]{16}$/.test(enc.password));
 
   // 2. Small file (1 KB) -> legacy single-shot format
   const small = randomBytes(1024);
@@ -39,7 +40,7 @@ async function main() {
   const encSmall = await encryptFile(smallFile);
   check('small file uses legacy format', encSmall.chunked === false);
 
-  const decSmallLegacy = await decryptFile(encSmall.encryptedBlob, encSmall.password, encSmall.iv, encSmall.salt, null, false);
+  const decSmallLegacy = await decryptFile(encSmall.encryptedBlob, encSmall.password, encSmall.iv, encSmall.salt, null, false, encSmall.compressed);
   check('small file round-trips (legacy path)', decSmallLegacy.length === small.length && decSmallLegacy.every((b, i) => b === small[i]));
 
   // 3. Wrong password must fail decryption (integrity check)
@@ -55,7 +56,7 @@ async function main() {
   const edge = randomBytes(4 * 1024 * 1024 + 1);
   const edgeFile = new File([edge], 'edge.bin');
   const encEdge = await encryptFile(edgeFile);
-  const decEdge = await decryptFile(encEdge.encryptedBlob, encEdge.password, encEdge.iv, encEdge.salt, null, true);
+  const decEdge = await decryptFile(encEdge.encryptedBlob, encEdge.password, encEdge.iv, encEdge.salt, null, true, encEdge.compressed);
   check('boundary file (4MB+1) round-trips', decEdge.length === edge.length && decEdge.every((b, i) => b === edge[i]));
 
   const failedCount = results.filter((r) => !r.ok).length;

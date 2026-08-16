@@ -1,5 +1,5 @@
 /**
- * SecureShare Compression Module
+ * FileShare Compression Module
  * CompressionStream & DecompressionStream wrappers (gzip)
  */
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick } from 'lucide-react'
+import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick, AlertTriangle } from 'lucide-react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { PageSkeletonLoader } from './components/Skeletons'
 import './App.css'
@@ -11,6 +11,7 @@ const DownloadPage = lazy(() => import('./pages/Download'))
 
 function App() {
   const [serverOnline, setServerOnline] = useState(null);
+  const [ephemeralStorage, setEphemeralStorage] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
@@ -37,6 +38,10 @@ function App() {
     try {
       const res = await fetch('/api/health', { signal: AbortSignal.timeout(4000) });
       setServerOnline(res.ok);
+      if (res.ok) {
+        const body = await res.json().catch(() => null);
+        setEphemeralStorage(body && body.persistent_storage === false);
+      }
     } catch {
       setServerOnline(false);
     }
@@ -56,45 +61,51 @@ function App() {
 
       {/* Navigation */}
       <nav className="navbar">
-        <Link to="/" className="nav-brand" onClick={() => setMobileOpen(false)}>
-          <Shield className="logo-icon" size={24} />
-          <span>FileShare</span>
-          <span className="badge">E2E Encrypted</span>
-        </Link>
+        <div className="navbar-container">
+          <Link to="/" className="nav-brand" onClick={() => setMobileOpen(false)}>
+            <Shield className="logo-icon" size={22} />
+            <span>FileShare</span>
+            <span className="badge">E2E Encrypted</span>
+          </Link>
 
-        <div className="nav-links">
-          <Link to="/" className={navLinkClass('/')}>
-            <Zap size={16} /> Home
-          </Link>
-          <Link to="/upload" className={navLinkClass('/upload')}>
-            <Upload size={16} /> Send a File
-          </Link>
-          <Link to="/download" className={navLinkClass('/download')}>
-            <Download size={16} /> Receive a File
-          </Link>
+          <div className="nav-links">
+            <Link to="/" className={navLinkClass('/')}>
+              <Zap size={15} /> Home
+            </Link>
+            <Link to="/upload" className={navLinkClass('/upload')}>
+              <Upload size={15} /> Send Files
+            </Link>
+            <Link to="/download" className={navLinkClass('/download')}>
+              <Download size={15} /> Receive Files
+            </Link>
+          </div>
+
+          <div className="nav-right">
+            <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
+              <div className="network-dot"></div>
+              <span>
+                {serverOnline === null ? 'Checking server...' : serverOnline ? 'Server Online' : 'Server Offline'}
+              </span>
+            </div>
+
+            <button
+              className="mobile-menu-toggle"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label="Toggle Navigation"
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-nav-drawer"
+            >
+              {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          </div>
         </div>
-
-        <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
-          <div className="network-dot"></div>
-          <span>
-            {serverOnline === null ? 'Checking server...' : serverOnline ? 'Server Online' : 'Server Offline'}
-          </span>
-        </div>
-
-        <button
-          className="mobile-menu-toggle"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle Navigation"
-        >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
       </nav>
 
       {/* Mobile Drawer with Backdrop */}
       {mobileOpen && (
         <>
           <div className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} />
-          <div className="mobile-menu-drawer animate-in">
+          <div className="mobile-menu-drawer animate-in" id="mobile-nav-drawer">
             <div className="mobile-network-status">
               <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
                 <div className="network-dot"></div>
@@ -107,10 +118,10 @@ function App() {
               <Zap size={18} /> Home
             </Link>
             <Link to="/upload" className={navLinkClass('/upload')} onClick={() => setMobileOpen(false)}>
-              <Upload size={18} /> Send a File
+              <Upload size={18} /> Send Files
             </Link>
             <Link to="/download" className={navLinkClass('/download')} onClick={() => setMobileOpen(false)}>
-              <Download size={18} /> Receive a File
+              <Download size={18} /> Receive Files
             </Link>
           </div>
         </>
@@ -118,6 +129,12 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
+        {ephemeralStorage && (
+          <div className="ephemeral-banner" role="status">
+            <AlertTriangle size={16} />
+            This host uses ephemeral storage. Files can disappear across deploys or instances. Prefer a VM with durable disk for real transfers.
+          </div>
+        )}
         <Suspense fallback={<PageSkeletonLoader />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -139,16 +156,16 @@ function HomePage() {
         </div>
         <h1>Send Files Securely. Nothing Is Stored Unencrypted.</h1>
         <p className="subtitle">
-          Upload a file, get a secure code, and share it. Your file is encrypted in your
-          browser before it ever leaves your device &mdash; even the server cannot read it.
+          Upload single or multiple files, get a secure code, and share it. Your files are encrypted in your
+          browser before leaving your device &mdash; even the server cannot read them.
         </p>
 
         <div className="cta-buttons">
           <Link to="/upload" className="btn btn-primary btn-lg">
-            <Upload size={18} /> Send a File
+            <Upload size={18} /> Send Files
           </Link>
           <Link to="/download" className="btn btn-secondary btn-lg">
-            <Download size={18} /> Receive a File
+            <Download size={18} /> Receive Files
           </Link>
         </div>
       </div>
@@ -160,20 +177,20 @@ function HomePage() {
           <div className="step-card">
             <span className="step-number">1</span>
             <MousePointerClick size={22} />
-            <h3>Choose your file</h3>
-            <p>Drag &amp; drop any file, or click to browse. Pick how long the code stays valid.</p>
+            <h3>Choose your files</h3>
+            <p>Drag &amp; drop single or multiple files (up to 2 GB). Configure download limits and expiry.</p>
           </div>
           <div className="step-card">
             <span className="step-number">2</span>
             <Key size={22} />
-            <h3>Get a secure code</h3>
-            <p>Your file is encrypted and hidden inside an image in your browser. You receive a private share code.</p>
+            <h3>Get a transfer code</h3>
+            <p>Files are compressed and encrypted client-side with AES-256-GCM. You receive a single code and QR.</p>
           </div>
           <div className="step-card">
             <span className="step-number">3</span>
             <Download size={22} />
             <h3>Recipient downloads</h3>
-            <p>Anyone with the code can open and decrypt the file. Optional Burn-on-Read deletes it after download.</p>
+            <p>Access via QR or Transfer Code. Safe 30s preview and batch download for all unpacked files.</p>
           </div>
         </div>
       </div>
@@ -199,7 +216,7 @@ function HomePage() {
           <div className="bento-badge">Steganographic Vault</div>
           <h3>Hidden inside an image</h3>
           <p className="bento-desc">
-            Encrypted data is embedded into the pixels of a PNG image. To anyone watching the
+            Encrypted data can be embedded into the pixels of a PNG image. To anyone watching the
             network, your transfer looks like an ordinary picture.
           </p>
         </div>
@@ -209,10 +226,10 @@ function HomePage() {
             <Flame size={24} />
           </div>
           <div className="bento-badge">Self-Destruct Option</div>
-          <h3>Burn-on-Read</h3>
+          <h3>Burn-on-Read & Limits</h3>
           <p className="bento-desc">
-            Turn it on and the file is permanently deleted from the server the moment it is
-            downloaded. One read, then it is gone forever.
+            Choose unlimited downloads until expiry, or set a download limit (1 to 100).
+            With Burn-on-Read, the file is deleted from the server immediately upon download.
           </p>
         </div>
 
@@ -223,8 +240,7 @@ function HomePage() {
           <div className="bento-badge">Simple Sharing</div>
           <h3>One code, done</h3>
           <p className="bento-desc">
-            After sending, you get a single share code like <code>SEC-4BE819D7-9F8A73C2</code>.
-            Send it to anyone - they paste it on the Receive page and download your file.
+            Anyone with the full code (id + password) can download. File ID alone is not enough.
           </p>
         </div>
       </div>

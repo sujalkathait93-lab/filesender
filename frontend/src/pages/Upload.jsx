@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import {
   Upload, File, X, Copy, Check, Shield, Lock, Key,
   Image as ImageIcon, Flame, Clock, ArrowLeft, Info,
-  RefreshCw, AlertTriangle, Loader2
+  RefreshCw, AlertTriangle, Loader2, Link as LinkIcon,
+  MessageSquare, Users, Radio
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { formatBytes, copyToClipboard } from '../crypto'
@@ -11,6 +12,7 @@ import { TransferStateMachine, TransferState } from '../stateMachine'
 import { MAX_TOTAL_TRANSFER_SIZE } from '../fileManager'
 import { useFileUpload } from '../hooks/useFileUpload'
 import { useEncryptAndSend } from '../hooks/useEncryptAndSend'
+import { useP2PSession } from '../hooks/useP2PSession'
 import { MeasurableProgressBar, ErrorAlert } from '../components/FeedbackStates'
 
 const MAX_REFRESHES = 5;
@@ -27,16 +29,35 @@ function UploadPage() {
   const [isTransferring, setIsTransferring] = useState(false);
 
   // Vault Options
-  const [useSteganography, setUseSteganography] = useState(true);
+  const [useSteganography, setUseSteganography] = useState(false);
   const [burnOnRead, setBurnOnRead] = useState(false);
+  const [maxDownloads, setMaxDownloads] = useState(10);
   const [expiryHours, setExpiryHours] = useState(24);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
+  const [useP2P, setUseP2P] = useState(false);
 
+  const confirmCloseRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!showConfirmModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowConfirmModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    confirmCloseRef.current?.focus();
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showConfirmModal]);
   const copyTimerRef = useRef(null);
+  const copyLinkTimerRef = useRef(null);
+  const copyMsgTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+      if (copyMsgTimerRef.current) clearTimeout(copyMsgTimerRef.current);
     };
   }, []);
 
@@ -68,8 +89,11 @@ function UploadPage() {
     error: sendError,
     sendFiles,
     refreshQRToken,
+    cancelTransfer,
     resetSendState
   } = useEncryptAndSend(stateMachine);
+
+  const { p2pStatus, p2pState, startP2P, stopP2P } = useP2PSession();
 
   const error = fileError || sendError;
   const supportsMultiple = typeof document !== 'undefined' && 'multiple' in document.createElement('input');
@@ -81,12 +105,37 @@ function UploadPage() {
     };
   }, [stateMachine]);
 
+  useEffect(() => {
+    if (result && useP2P && result.fileId) startP2P(result.fileId, 'sender');
+    return () => stopP2P();
+  }, [result, useP2P, startP2P, stopP2P]);
+
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files || []);
     if (selectedFiles.length > 0) {
       addFiles(selectedFiles);
     }
     e.target.value = '';
+  };
+
+  const handleBurnToggle = () => {
+    const nextBurn = !burnOnRead;
+    setBurnOnRead(nextBurn);
+    if (nextBurn) {
+      setMaxDownloads(1);
+    } else if (maxDownloads === 1) {
+      setMaxDownloads(10);
+    }
+  };
+
+  const handleMaxDownloadsChange = (val) => {
+    const num = Number(val);
+    setMaxDownloads(num);
+    if (num === 1) {
+      setBurnOnRead(true);
+    } else {
+      setBurnOnRead(false);
+    }
   };
 
   const openConfirmation = () => {
@@ -100,13 +149,20 @@ function UploadPage() {
     setShowConfirmModal(false);
     setIsTransferring(true);
     try {
-      await sendFiles({ files, useSteganography, burnOnRead, expiryHours, totalSelectedSize });
+      await sendFiles({
+        files,
+        useSteganography,
+        burnOnRead,
+        expiryHours,
+        maxDownloads,
+        totalSelectedSize
+      });
     } finally {
       setIsTransferring(false);
     }
   };
 
-  const handleCopy = async () => {
+  const handleCopyCode = async () => {
     if (!result) return;
     await copyToClipboard(result.transferCode);
     setCopied(true);
@@ -114,10 +170,37 @@ function UploadPage() {
     copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+    await copyToClipboard(shareUrl);
+    setCopiedLink(true);
+    if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+    copyLinkTimerRef.current = setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleCopyShareMessage = async () => {
+    if (!result) return;
+    const msg = [
+      'FileShare Transfer',
+      `Code: ${result.transferCode}`,
+      shareUrl ? `Link: ${shareUrl}` : '',
+      `Expires: ${expiryHours} hour${expiryHours > 1 ? 's' : ''}`,
+      `Files: ${result.fileCount} file(s) (${formatBytes(result.originalSize)})`
+    ].filter(Boolean).join('\n');
+
+    await copyToClipboard(msg);
+    setCopiedMessage(true);
+    if (copyMsgTimerRef.current) clearTimeout(copyMsgTimerRef.current);
+    copyMsgTimerRef.current = setTimeout(() => setCopiedMessage(false), 2000);
+  };
+
   const handleClearAll = () => {
     clearFiles();
     resetSendState();
+    stopP2P();
     setCopied(false);
+    setCopiedLink(false);
+    setCopiedMessage(false);
     setIsTransferring(false);
     stateMachine.transitionTo(TransferState.IDLE);
   };
@@ -298,6 +381,45 @@ function UploadPage() {
                   </div>
                 </div>
 
+                <div
+                  className={`vault-option-card ${useP2P ? 'active' : ''}`}
+                  onClick={() => !isTransferring && setUseP2P(!useP2P)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseP2P(!useP2P)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <Radio size={20} style={{ color: useP2P ? '#5E6AD2' : '#aaa', flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: '0.95rem' }}>Direct P2P (same time)</strong>
+                        <span style={{ fontSize: '0.8rem', display: 'block', color: 'var(--foreground-muted)' }}>
+                          Optional. Receiver must be online now. Encrypted REST upload stays the default if P2P fails.
+                        </span>
+                      </div>
+                    </div>
+                    <input type="checkbox" checked={useP2P} disabled={isTransferring} onChange={(e) => setUseP2P(e.target.checked)} style={{ accentColor: '#5E6AD2', flexShrink: 0 }} aria-label="Direct P2P same time" />
+                  </div>
+                </div>
+
+                <div className="expiry-row" style={{ marginTop: '0.75rem' }}>
+                  <Users size={18} style={{ color: 'var(--foreground-muted)', flexShrink: 0 }} />
+                  <label htmlFor="downloads-select">Download limit</label>
+                  <select
+                    id="downloads-select"
+                    value={maxDownloads}
+                    disabled={isTransferring}
+                    onChange={(e) => handleMaxDownloadsChange(e.target.value)}
+                  >
+                    <option value={0}>Unlimited (until expiry)</option>
+                    <option value={1}>1 download (Burn-on-Read)</option>
+                    <option value={5}>5 downloads</option>
+                    <option value={10}>10 downloads (Standard)</option>
+                    <option value={50}>50 downloads</option>
+                    <option value={100}>100 downloads</option>
+                  </select>
+                </div>
+
                 <div className="expiry-row">
                   <Clock size={18} style={{ color: 'var(--foreground-muted)', flexShrink: 0 }} />
                   <label htmlFor="expiry-select">Code expires after</label>
@@ -362,7 +484,7 @@ function UploadPage() {
           <div className="preview-modal" style={{ maxWidth: '550px' }}>
             <div className="preview-header">
               <h3><Shield size={20} /> Confirm Transfer Details</h3>
-              <button className="preview-close" onClick={() => setShowConfirmModal(false)} aria-label="Close modal">
+              <button className="preview-close" onClick={() => setShowConfirmModal(false)} aria-label="Close modal" ref={confirmCloseRef}>
                 <X size={20} />
               </button>
             </div>
@@ -383,6 +505,12 @@ function UploadPage() {
                 <label>Sharing Mode</label>
                 <span style={{ color: '#10b981' }}>
                   {useSteganography && burnOnRead ? 'Burn-on-Read + Steganography' : useSteganography ? 'Image/Steganography' : burnOnRead ? 'Burn-on-Read' : 'Standard AES-256-GCM'}
+                </span>
+              </div>
+              <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
+                <label>Download Limit</label>
+                <span style={{ color: maxDownloads === 0 ? '#10b981' : undefined }}>
+                  {maxDownloads === 0 ? 'Unlimited downloads until expiry' : maxDownloads === 1 ? '1 download (Burn-on-Read)' : `${maxDownloads} downloads`}
                 </span>
               </div>
               <div className="meta-item">
@@ -408,8 +536,15 @@ function UploadPage() {
 
           <div className="status-message success">
             <Check size={18} />
-            Files encrypted and securely prepared. Share the code below with the recipient.
+            Files encrypted and uploaded. Anyone with this code can download. Keep it private.
           </div>
+
+          {useP2P && (
+            <div className={`status-message ${p2pState === 'connected' ? 'success' : 'info'}`}>
+              <Radio size={18} />
+              {p2pStatus || 'Direct P2P: waiting for peer… REST share still works.'}
+            </div>
+          )}
 
           {stegoSkipped && (
             <div className="status-message info">
@@ -426,6 +561,10 @@ function UploadPage() {
             <div className="meta-item">
               <label>Total Size</label>
               <span>{formatBytes(result.originalSize)}</span>
+            </div>
+            <div className="meta-item">
+              <label>Downloads</label>
+              <span>{result.maxDownloads === 0 ? 'Unlimited' : result.maxDownloads === 1 ? '1 (Burn)' : `Max ${result.maxDownloads}`}</span>
             </div>
             <div className="meta-item">
               <label>Expires</label>
@@ -446,14 +585,14 @@ function UploadPage() {
           )}
 
           <div className="crypto-code-box" style={{ borderColor: '#10b981', marginTop: '1.25rem' }}>
-            <label style={{ color: '#10b981' }}><Key size={16} /> Share Code</label>
+            <label style={{ color: '#10b981' }}><Key size={16} /> Transfer Code</label>
             <div className="crypto-code-text">{result.transferCode}</div>
           </div>
 
           {shareUrl && (
             <div className="qr-code-box animate-in" style={{ minHeight: '220px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <strong style={{ fontSize: '0.9rem', color: 'var(--foreground)' }}>Scan Code to Download</strong>
+                <strong style={{ fontSize: '0.9rem', color: 'var(--foreground)' }}>Scan QR Code to Download</strong>
                 <span className="badge" style={{ background: refreshLimitReached ? 'rgba(239, 68, 68, 0.2)' : undefined, color: refreshLimitReached ? '#ef4444' : undefined }}>
                   Refreshes: {refreshCount}/{MAX_REFRESHES}
                 </span>
@@ -470,7 +609,7 @@ function UploadPage() {
                   disabled={isRefreshingToken}
                   style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', gap: '0.4rem' }}
                 >
-                  <RefreshCw size={14} className={isRefreshingToken ? 'spin' : ''} /> Refresh Token
+                  <RefreshCw size={14} className={isRefreshingToken ? 'spin' : ''} /> Refresh QR Token
                 </button>
               )}
 
@@ -482,20 +621,44 @@ function UploadPage() {
             </div>
           )}
 
-          <button className="btn btn-primary" onClick={handleCopy} style={{ width: '100%', justifyContent: 'center', minHeight: '48px' }}>
-            {copied ? <><Check size={18} /> Copied!</> : <><Copy size={18} /> Copy Code</>}
-          </button>
+          <div className="share-actions-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button className="btn btn-primary" onClick={handleCopyCode} style={{ width: '100%', justifyContent: 'center', minHeight: '46px' }}>
+              {copied ? <><Check size={18} /> Code Copied!</> : <><Copy size={18} /> Copy Transfer Code</>}
+            </button>
 
-          <button className="btn btn-secondary" onClick={handleClearAll} style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem', minHeight: '48px' }}>
+            {shareUrl && (
+              <button className="btn btn-secondary" onClick={handleCopyLink} style={{ width: '100%', justifyContent: 'center', minHeight: '46px' }}>
+                {copiedLink ? <><Check size={18} /> Link Copied!</> : <><LinkIcon size={18} /> Copy Share Link</>}
+              </button>
+            )}
+
+            <button className="btn btn-secondary" onClick={handleCopyShareMessage} style={{ width: '100%', justifyContent: 'center', minHeight: '46px' }}>
+              {copiedMessage ? <><Check size={18} /> Message Copied!</> : <><MessageSquare size={18} /> Copy Share Message (for WhatsApp / Telegram / Slack)</>}
+            </button>
+          </div>
+
+          <button className="btn btn-secondary" onClick={handleClearAll} style={{ width: '100%', justifyContent: 'center', marginTop: '1.25rem', minHeight: '48px' }}>
             Send Another Transfer
           </button>
+          {result.ownerToken && (
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                const ok = await cancelTransfer();
+                if (ok) handleClearAll();
+              }}
+              style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem', minHeight: '48px' }}
+            >
+              Cancel this transfer
+            </button>
+          )}
         </div>
       )}
 
       {files.length === 0 && !result && (
         <div className="security-notice">
           <Info size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          Zero-knowledge client-side encryption. Keys are never transmitted to or stored on the server.
+          Zero-knowledge client-side encryption. The AES password is not sent to the server. Anyone with the full share code can download.
         </div>
       )}
     </div>

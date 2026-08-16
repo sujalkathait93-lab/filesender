@@ -8,6 +8,7 @@
 import { TransferStateMachine, TransferState } from '../frontend/src/stateMachine.js';
 import { detectFileType, validateFiles, packFiles, unpackFiles } from '../frontend/src/fileManager.js';
 import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../frontend/src/previewManager.js';
+import { createTransferCode, parseTransferCode, createShareMessage, isValidTransferCodeInput } from '../frontend/src/transferCode.js';
 
 let passed = 0;
 let failed = 0;
@@ -110,6 +111,34 @@ async function runTests() {
   pm.stopCountdown();
   pm.cleanup();
   check('cleanup resets preview state', pm.currentPreview === null && pm.activeObjectUrls.size === 0);
+
+  console.log('== 6. Transfer Code Creation, Parsing & Share Templates ==');
+  const code = createTransferCode('4be819d7', '9f8a73c2');
+  check('createTransferCode format FS-XXX-YYY', code === 'FS-4BE819D7-9F8A73C2');
+
+  const p1 = parseTransferCode('FS-4BE819D7-9F8A73C2');
+  check('parse FS code', p1.fileId === '4be819d7' && p1.key === '9f8a73c2');
+
+  const p2 = parseTransferCode('SEC-4BE819D7-9F8A73C2');
+  check('parse SEC code legacy', p2.fileId === '4be819d7' && p2.key === '9f8a73c2');
+
+  const p3 = parseTransferCode('https://fileshare.local/download?code=FS-4BE819D7-9F8A73C2');
+  check('parse code from URL', p3.fileId === '4be819d7' && p3.key === '9f8a73c2');
+
+  const p4 = parseTransferCode('4be819d79f8a73c2');
+  check('parse raw 16-hex code', p4.fileId === '4be819d7' && p4.key === '9f8a73c2');
+  check('reject non-hex transfer input', isValidTransferCodeInput('not a code!') === false);
+  check('accept FS transfer input', isValidTransferCodeInput('FS-4BE819D7-9F8A73C2') === true);
+
+  const shareMsg = createShareMessage({
+    transferCode: 'FS-4BE819D7-9F8A73C2',
+    shareUrl: 'https://fileshare.local/download?code=FS-4BE819D7-9F8A73C2',
+    expiryHours: 1,
+    fileCount: 3,
+    totalSize: '45.2 MB'
+  });
+  check('share message contains transfer code', shareMsg.includes('Code: FS-4BE819D7-9F8A73C2'));
+  check('share message contains link and expiry', shareMsg.includes('Link:') && shareMsg.includes('Expires: 1 hour'));
 
   console.log(`\n== ${passed} passed, ${failed} failed ==`);
   process.exit(failed ? 1 : 0);

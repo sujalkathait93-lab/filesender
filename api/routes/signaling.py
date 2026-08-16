@@ -4,12 +4,22 @@ Handles room management, WebRTC offer/answer/ICE candidate relay, and transfer s
 Thread-safe synchronized room management.
 """
 
+import re
 import threading
 from flask import request
 from flask_socketio import SocketIO, join_room, leave_room, emit
 
 _rooms_lock = threading.Lock()
 active_rooms = {}
+_ROOM_ID_RE = re.compile(r"^[0-9a-fA-F]{8,32}$")
+_MAX_ROOM_MEMBERS = 2
+
+
+def _valid_room(room) -> str:
+    room = str(room or "").strip()[:128]
+    if not room or not _ROOM_ID_RE.match(room):
+        return ""
+    return room
 
 
 def register_signaling_handlers(socketio: SocketIO):
@@ -23,23 +33,25 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_join_room(data):
         if not isinstance(data, dict):
             return
-        room = str(data.get("room", "")).strip()[:128]
+        room = _valid_room(data.get("room"))
         role = str(data.get("role", "peer"))[:32]
         if not room:
             return
 
-        join_room(room)
-        meta = None
         with _rooms_lock:
             if room not in active_rooms:
                 active_rooms[room] = {"members": [], "meta": None}
 
             if request.sid not in active_rooms[room]["members"]:
+                if len(active_rooms[room]["members"]) >= _MAX_ROOM_MEMBERS:
+                    emit("room_full", {"room": room})
+                    return
                 active_rooms[room]["members"].append(request.sid)
 
             member_count = len(active_rooms[room]["members"])
             meta = active_rooms[room]["meta"]
 
+        join_room(room)
         emit("room_joined", {
             "room": room,
             "role": role,
@@ -51,7 +63,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_offer(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         offer = data.get("offer")
         if room and offer:
             emit("webrtc_offer", {
@@ -63,7 +75,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_answer(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         answer = data.get("answer")
         if room and answer:
             emit("webrtc_answer", {
@@ -75,7 +87,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_ice_candidate(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         candidate = data.get("candidate")
         if room and candidate:
             emit("ice_candidate", {
@@ -87,7 +99,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_transfer_meta(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         meta = data.get("meta")
         if room and meta:
             with _rooms_lock:
@@ -101,7 +113,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_request_resume(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         last_chunk_index = data.get("last_chunk_index", -1)
         if room:
             emit("request_resume", {
@@ -112,7 +124,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_transfer_status(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         status = data.get("status")
         if room and status:
             emit("transfer_status", status, to=room, include_self=False)
@@ -121,7 +133,7 @@ def register_signaling_handlers(socketio: SocketIO):
     def handle_leave_room(data):
         if not isinstance(data, dict):
             return
-        room = data.get("room")
+        room = _valid_room(data.get("room"))
         if room:
             leave_room(room)
             with _rooms_lock:

@@ -1,4 +1,4 @@
-/* SecureShare - Linear / Modern Design System */
+/* FileShare - Modern Design System */
 
 :root {
   --bg-deep: #020203;
@@ -116,9 +116,10 @@ body {
 .main-content {
   position: relative;
   z-index: 1;
-  padding: 3rem 1.5rem 6rem;
-  max-width: 1200px;
+  padding: 2rem 1.5rem 4.5rem;
+  max-width: 1180px;
   margin: 0 auto;
+  width: 100%;
 }
 
 /* Navbar */
@@ -126,25 +127,34 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 2rem;
-  background: rgba(5, 5, 6, 0.85);
+  width: 100%;
+  background: rgba(5, 5, 6, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-default);
+}
+
+.navbar-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0.65rem 1.5rem;
+  width: 100%;
+  height: 60px;
 }
 
 .nav-brand {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--foreground);
   text-decoration: none;
   letter-spacing: -0.02em;
+  flex-shrink: 0;
 }
 
 .logo-icon {
@@ -178,12 +188,12 @@ body {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.5rem 1rem;
+  padding: 0.45rem 0.95rem;
   color: var(--foreground-muted);
   text-decoration: none;
   border-radius: 8px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   font-weight: 500;
 }
 
@@ -199,11 +209,18 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
 .network-badge {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.9rem;
+  padding: 0.35rem 0.85rem;
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
@@ -236,7 +253,8 @@ body {
   border: none;
   color: var(--foreground);
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.4rem;
+  border-radius: 8px;
 }
 
 /* Body scroll lock when mobile menu is open */
@@ -462,24 +480,25 @@ body {
 
 /* Page Containers */
 .page-container {
-  max-width: 720px;
+  max-width: 640px;
+  width: 100%;
   margin: 0 auto;
 }
 
 .page-header {
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.75rem;
 }
 
 .page-header h2 {
-  font-size: 2.25rem;
+  font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
   background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 255, 255, 0.75) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -487,7 +506,10 @@ body {
 
 .page-header p {
   color: var(--foreground-muted);
-  font-size: 1.05rem;
+  font-size: 0.925rem;
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.5;
 }
 
 /* Progressive Wizard Steps (Jakob's Law) */
@@ -495,15 +517,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  margin-bottom: 2.25rem;
+  gap: 0.6rem;
+  margin-bottom: 1.75rem;
   flex-wrap: wrap;
 }
 
 .wizard-steps .step {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   opacity: 0.45;
   transition: all 0.3s;
 }
@@ -517,15 +539,15 @@ body {
 }
 
 .wizard-steps .step-num {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--surface-hover);
   border: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--foreground-muted);
 }
@@ -544,13 +566,13 @@ body {
 }
 
 .wizard-steps .step-label {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--foreground);
 }
 
 .wizard-steps .step-line {
-  width: 30px;
+  width: 24px;
   height: 1px;
   background: var(--border-default);
 }
@@ -567,13 +589,18 @@ a:focus-visible,
 /* Drop Zone */
 .drop-zone {
   border: 2px dashed var(--border-default);
-  border-radius: 20px;
-  padding: 3.5rem 2rem;
+  border-radius: 16px;
+  padding: 2.25rem 1.5rem;
+  min-height: 170px;
   text-align: center;
   background: var(--bg-elevated);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .drop-zone:hover,
@@ -585,27 +612,27 @@ a:focus-visible,
 }
 
 .drop-icon-wrapper {
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   background: var(--accent-dim);
   border: 1px solid var(--border-accent);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent-bright);
-  margin: 0 auto 1.5rem;
+  margin: 0 auto 0.75rem;
 }
 
 .drop-zone h3 {
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--foreground);
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.25rem;
 }
 
 .drop-zone p {
-  font-size: 0.875rem;
+  font-size: 0.825rem;
   color: var(--foreground-muted);
 }
 
@@ -802,18 +829,24 @@ a:focus-visible,
 /* Input Styles */
 .download-input {
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 2rem;
+  gap: 0.6rem;
+  margin-bottom: 1.75rem;
+  align-items: center;
+  width: 100%;
 }
 
 .download-input input {
   flex: 1;
+  min-width: 0;
+  height: 46px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: 10px;
-  padding: 0.85rem 1.25rem;
+  padding: 0.75rem 1.1rem;
   color: var(--foreground);
-  font-size: 0.95rem;
+  font-size: 0.925rem;
+  font-family: monospace;
+  letter-spacing: 0.02em;
   outline: none;
   transition: all 0.2s;
   box-shadow: var(--shadow-card);
@@ -822,6 +855,20 @@ a:focus-visible,
 .download-input input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.download-input-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.download-input-actions .btn {
+  height: 46px;
+  padding: 0.75rem 1.1rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
 }
 
 .status-message {
@@ -938,9 +985,20 @@ a:focus-visible,
     min-width: 100%;
   }
 
-  .download-input .btn {
+  .download-input-actions {
     width: 100%;
-    flex: none;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .download-input-actions .btn {
+    flex: 1;
+    padding: 0.75rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .download-input-actions .btn:last-child {
+    flex: 1.4;
   }
 
   .action-row {
@@ -965,7 +1023,7 @@ a:focus-visible,
   }
 
   .drop-zone {
-    padding: 2.5rem 1.25rem;
+    padding: 2rem 1.25rem;
   }
 
   .crypto-code-text {
@@ -1000,22 +1058,6 @@ a:focus-visible,
 
 /* Mobile-first stacking adjustments on screens under 480px */
 @media (max-width: 480px) {
-  .download-input {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-
-  .download-input input {
-    width: 100%;
-    min-width: 100%;
-  }
-
-  .download-input .btn {
-    width: 100%;
-    margin-left: 0;
-  }
-
   .expiry-row {
     flex-direction: column;
     align-items: stretch;
@@ -1454,6 +1496,20 @@ a:focus-visible,
 
 .preview-footer .btn {
   flex: 1;
+}
+
+.ephemeral-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 auto 1rem;
+  max-width: 1100px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 /* Burn Alert & Vault Card Styles */
@@ -1983,33 +2039,34 @@ select:focus-visible,
 
 @media (min-width: 1366px) {
   .main-content {
-    max-width: 1240px;
+    max-width: 1180px;
+    padding-top: 2.25rem;
   }
 }
 
 @media (min-width: 1440px) {
   .main-content {
-    max-width: 1360px;
-    padding-top: 4rem;
+    max-width: 1180px;
+    padding-top: 2.5rem;
   }
 
   .hero h1 {
-    font-size: 3.4rem;
+    font-size: 3.2rem;
   }
 }
 
 @media (min-width: 1920px) {
   .main-content {
-    max-width: 1520px;
-    padding-top: 4.5rem;
+    max-width: 1200px;
+    padding-top: 2.75rem;
   }
 
   .hero h1 {
-    font-size: 3.8rem;
+    font-size: 3.5rem;
   }
 
   .bento-card {
-    padding: 2.5rem;
+    padding: 2rem;
   }
 }
 

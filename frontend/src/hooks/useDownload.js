@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { decryptFile, extractKeyFromUrl, parseTransferCode, isChunkedMarker } from '../crypto';
+import { decryptFile, extractKeyFromUrl, parseTransferCode, isChunkedMarker, isValidTransferCodeInput, computeAccessProof } from '../crypto';
 import { unpackFiles } from '../fileManager';
 import { extractPayloadFromImage } from '../steganography';
 import { api } from '../services/api';
@@ -19,6 +19,29 @@ async function isPngBlob(blob) {
   } catch (_) {
     return false;
   }
+}
+
+function mapDownloadError(err, fallback) {
+  const status = err.status;
+  const msg = (err.message || '').toLowerCase();
+  const name = err.name || '';
+  if (status === 429) return 'Too many requests. Please wait a moment and retry.';
+  if (status === 413) return 'That file is too large (max 2 GB).';
+  if (status === 410 || msg.includes('expired')) {
+    if (msg.includes('preview')) return 'Preview limit reached for this transfer. You can still try Save & Download.';
+    if (msg.includes('expired')) return 'This transfer has expired and is no longer available.';
+    return 'This file has reached its download limit or self-destructed and is permanently unavailable.';
+  }
+  if (status === 403) return 'This lookup needs the full transfer code (id and password). File ID alone is not enough.';
+  if (status === 404) return 'Transfer not found. Please verify the code.';
+  if (status === 400) return 'Invalid transfer code. Please check and try again.';
+  if (name === 'AbortError' || msg.includes('timeout') || msg.includes('failed to fetch') || msg.includes('network')) {
+    return 'Network error. Check your connection and retry.';
+  }
+  if (name === 'OperationError' || msg.includes('operationerror') || msg.includes('decrypt')) {
+    return 'Decryption failed. The code may be wrong or the file is corrupted.';
+  }
+  return fallback;
 }
 
 export function useDownload(stateMachine) {
@@ -37,21 +60,27 @@ export function useDownload(stateMachine) {
   const searchInFlightRef = useRef(false);
 
   const fetchServerFileInfo = useCallback(async (id, activeKey) => {
+    if (!activeKey) {
+      setNeedsKey(true);
+      setError('Paste the full transfer code (FS-id-password). File ID alone cannot open this transfer.');
+      stateMachine?.transitionTo(TransferState.INVALID_TOKEN);
+      return;
+    }
     try {
-      const data = await api.fileInfo(id);
+      const proof = await computeAccessProof(activeKey);
+      const data = await api.fileInfo(id, proof);
       setFileInfo(data);
-      setNeedsKey(!activeKey);
+      setNeedsKey(false);
       stateMachine?.transitionTo(TransferState.DOWNLOAD);
     } catch (err) {
-      if (err.status === 410) {
+      const mapped = mapDownloadError(err, err.message || 'Could not reach server. Please check your network connection.');
+      if (err.status === 410 && !(err.message || '').toLowerCase().includes('expired')) {
         setIsBurned(true);
-        setError('This file has self-destructed and is permanently unavailable.');
+      }
+      setError(mapped);
+      if (err.status === 410) {
         stateMachine?.transitionTo(TransferState.EXPIRED);
-      } else if (err.status === 404) {
-        setError('Transfer session not found or expired. Please check the code.');
-        stateMachine?.transitionTo(TransferState.FAILED);
       } else {
-        setError('Could not reach server. Please check your network connection.');
         stateMachine?.transitionTo(TransferState.FAILED);
       }
     }
@@ -76,6 +105,14 @@ export function useDownload(stateMachine) {
     setDecryptedFiles([]);
     stateMachine?.transitionTo(TransferState.CONNECT);
 
+    if (!isValidTransferCodeInput(code)) {
+      setError('Invalid transfer code format. Please check and try again.');
+      stateMachine?.transitionTo(TransferState.INVALID_TOKEN);
+      searchInFlightRef.current = false;
+      setIsLoading(false);
+      return;
+    }
+
     if (!parsed.fileId) {
       setError('Invalid transfer code format. Please check and try again.');
       stateMachine?.transitionTo(TransferState.INVALID_TOKEN);
@@ -89,6 +126,29 @@ export function useDownload(stateMachine) {
     searchInFlightRef.current = false;
     setIsLoading(false);
   }, [fetchServerFileInfo, stateMachine]);
+
+  const downloadSingleFile = useCallback((file) => {
+    if (!file || !file.blob) return;
+    const url = window.URL.createObjectURL(file.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => {
+      try { window.URL.revokeObjectURL(url); } catch (_) {}
+    }, 1000);
+  }, []);
+
+  const downloadAllFiles = useCallback(() => {
+    if (!decryptedFiles || decryptedFiles.length === 0) return;
+    decryptedFiles.forEach((file, index) => {
+      setTimeout(() => {
+        downloadSingleFile(file);
+      }, index * 200);
+    });
+  }, [decryptedFiles, downloadSingleFile]);
 
   const executeDownload = useCallback(async (triggerBrowserSave = true, onPreviewDataReady = null) => {
     if (!fileInfo) return;
@@ -107,8 +167,10 @@ export function useDownload(stateMachine) {
     const throttle = createProgressThrottle(setProgress);
 
     try {
+      const proof = await computeAccessProof(key);
       const { blob, headers } = await api.download(fileInfo.id, {
         preview: !triggerBrowserSave,
+        proof,
         onProgress: (received, total) => {
           throttle.push({ stage: 'downloading', percent: 8 + Math.round((received / total) * 55) });
         },
@@ -141,7 +203,8 @@ export function useDownload(stateMachine) {
           const basePercent = p.stage === 'complete' ? 100 : 76 + Math.round(p.percent * 0.24);
           throttle.push({ stage: p.stage, percent: basePercent });
         },
-        chunked
+        chunked,
+        fileInfo.compressed !== false
       );
       throttle.flush();
 
@@ -155,18 +218,11 @@ export function useDownload(stateMachine) {
       } else if (triggerBrowserSave) {
         stateMachine?.transitionTo(TransferState.COMPLETE);
         // Trigger browser save for each unpacked file
-        for (const file of unpacked.files) {
-          const url = window.URL.createObjectURL(file.blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = file.name;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+        unpacked.files.forEach((file, index) => {
           setTimeout(() => {
-            try { window.URL.revokeObjectURL(url); } catch (_) {}
-          }, 1000);
-        }
+            downloadSingleFile(file);
+          }, index * 200);
+        });
 
         // Also save primary URL for download card
         const primaryBlob = unpacked.files[0].blob;
@@ -178,7 +234,7 @@ export function useDownload(stateMachine) {
       setProgress({ stage: 'complete', percent: 100 });
     } catch (err) {
       if (!isBurned) {
-        setError(err.message || 'Decryption failed. Please check the code/key.');
+        setError(mapDownloadError(err, 'Download failed. Please check the code and retry.'));
       }
       stateMachine?.transitionTo(TransferState.FAILED);
       setProgress(null);
@@ -186,7 +242,7 @@ export function useDownload(stateMachine) {
       setIsDecrypting(false);
       throttle.dispose();
     }
-  }, [fileInfo, manualKey, isBurned, stateMachine]);
+  }, [fileInfo, manualKey, isBurned, stateMachine, downloadSingleFile]);
 
   const resetDownloadState = useCallback(() => {
     revokeDecryptedUrl();
@@ -225,6 +281,8 @@ export function useDownload(stateMachine) {
     setManualKey,
     searchCode,
     executeDownload,
+    downloadSingleFile,
+    downloadAllFiles,
     resetDownloadState,
     revokeDecryptedUrl
   };

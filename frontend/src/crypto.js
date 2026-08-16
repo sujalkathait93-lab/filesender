@@ -1,5 +1,5 @@
 /**
- * SecureShare Crypto Module
+ * FileShare Crypto Module
  * Client-side E2E Encryption using Web Crypto API
  * AES-256-GCM + PBKDF2 + gzip
  *
@@ -20,10 +20,16 @@ import { bytesToHex, hexToBytes } from './hexUtils.js';
 import { compressData, decompressData } from './compression.js';
 
 // Re-export for convenience & backwards compatibility
-export { extractKeyFromUrl, createTransferCode, parseTransferCode } from './transferCode.js';
+export { extractKeyFromUrl, createTransferCode, parseTransferCode, createShareMessage, isValidTransferCodeInput } from './transferCode.js';
 export { formatBytes } from './utils/format.js';
 export { copyToClipboard } from './utils/clipboard.js';
 export { compressData, decompressData } from './compression.js';
+
+export async function computeAccessProof(password) {
+  const data = new TextEncoder().encode(`fileshare-access:${password || ''}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return bytesToHex(new Uint8Array(digest));
+}
 
 const ALGORITHM = 'AES-GCM';
 const KEY_LENGTH = 256;
@@ -51,7 +57,7 @@ export async function generateKey() {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
   // Generate 4 random bytes -> 8 hex characters for short password
-  const password = bytesToHex(crypto.getRandomValues(new Uint8Array(4)));
+  const password = bytesToHex(crypto.getRandomValues(new Uint8Array(8)));
 
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -146,6 +152,7 @@ export async function encryptFile(file, onProgress) {
   const parts = [];
   let encryptedSize = 0;
   let compressionRatio = '0.0';
+  let useGzip = true;
 
   for (let i = 0; i < totalChunks; i++) {
     // Yield to main thread every chunk so UI animations, spinners, and progress remain 60fps
@@ -157,12 +164,22 @@ export async function encryptFile(file, onProgress) {
     const end = Math.min(start + CHUNK_SIZE, totalSize);
     const raw = new Uint8Array(await file.slice(start, end).arrayBuffer());
 
-    const compressed = await compressData(raw);
-    if (i === 0 && raw.length > 0) {
-      compressionRatio = ((1 - compressed.length / raw.length) * 100).toFixed(1);
+    let payload = raw;
+    if (useGzip) {
+      const compressed = await compressData(raw);
+      if (i === 0 && raw.length > 0 && compressed.length >= raw.length * 0.98) {
+        useGzip = false;
+        payload = raw;
+        compressionRatio = '0.0';
+      } else {
+        payload = compressed;
+        if (i === 0 && raw.length > 0) {
+          compressionRatio = ((1 - compressed.length / raw.length) * 100).toFixed(1);
+        }
+      }
     }
 
-    const encrypted = await encryptChunkData(compressed.buffer, key, iv, i);
+    const encrypted = await encryptChunkData(payload.buffer, key, iv, i);
 
     if (chunked) {
       // 4-byte little-endian length header makes the stream self-describing.
@@ -190,6 +207,7 @@ export async function encryptFile(file, onProgress) {
     password,
     compressionRatio,
     chunked,
+    compressed: useGzip,
   };
 }
 
@@ -197,7 +215,7 @@ export async function encryptFile(file, onProgress) {
  * Decrypt file: read ciphertext -> AES-GCM decrypt + gunzip per chunk.
  * Supports both the chunked format (checksum marker) and legacy single-shot.
  */
-export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onProgress, chunked = false) {
+export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onProgress, chunked = false, compressed = true) {
   if (!ivHex || !saltHex) {
     throw new Error('Invalid file metadata: IV or Salt is missing');
   }
@@ -231,7 +249,7 @@ export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onPro
       offset += chunkLength;
 
       const decrypted = await decryptChunkData(cipherChunk, key, iv, chunkIndex);
-      const raw = await decompressData(decrypted);
+      const raw = compressed ? await decompressData(decrypted) : decrypted;
       decryptedParts.push(raw);
       outputLength += raw.length;
       chunkIndex++;
@@ -248,7 +266,7 @@ export async function decryptFile(encryptedBlob, password, ivHex, saltHex, onPro
   const encryptedData = new Uint8Array(await encryptedBlob.arrayBuffer());
   const decrypted = await crypto.subtle.decrypt({ name: ALGORITHM, iv }, key, encryptedData);
   onProgress?.({ stage: 'decompressing', percent: 80 });
-  const decompressed = await decompressData(new Uint8Array(decrypted));
+  const decompressed = compressed ? await decompressData(new Uint8Array(decrypted)) : new Uint8Array(decrypted);
   onProgress?.({ stage: 'complete', percent: 100 });
   return decompressed;
 }

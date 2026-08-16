@@ -1,5 +1,5 @@
 /**
- * SecureShare Hex Utilities
+ * FileShare Hex Utilities
  * Utility functions to convert between hex strings and Uint8Arrays.
  */
 

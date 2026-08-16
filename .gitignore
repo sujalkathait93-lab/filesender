@@ -30,6 +30,7 @@ uploads/*
 # ─── IDE & OS ──────────────────────────────────────────────────
 .vscode/
 .idea/
+.cursor/
 .DS_Store
 Thumbs.db
 *.swp

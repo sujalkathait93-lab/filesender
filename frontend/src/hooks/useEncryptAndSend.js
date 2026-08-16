@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { encryptFile, createTransferCode, buildChunkMarker } from '../crypto';
+import { encryptFile, createTransferCode, buildChunkMarker, computeAccessProof } from '../crypto';
 import { packFiles } from '../fileManager';
 import { embedPayloadInImage } from '../steganography';
 import { api } from '../services/api';
@@ -24,7 +24,7 @@ export function useEncryptAndSend(stateMachine) {
   const [refreshLimitReached, setRefreshLimitReached] = useState(false);
   const [error, setError] = useState(null);
 
-  const sendFiles = useCallback(async ({ files, useSteganography, burnOnRead, expiryHours, totalSelectedSize }) => {
+  const sendFiles = useCallback(async ({ files, useSteganography, burnOnRead, expiryHours, maxDownloads = 10, totalSelectedSize }) => {
     if (!files || files.length === 0) return;
 
     stateMachine?.transitionTo(TransferState.PREPARE);
@@ -65,25 +65,34 @@ export function useEncryptAndSend(stateMachine) {
       stateMachine?.transitionTo(TransferState.CREATING_TRANSFER);
       throttle.push({ stage: 'uploading', percent: 88 });
 
+      const effectiveMaxDownloads = burnOnRead ? 1 : Number(maxDownloads);
+
       const formData = new FormData();
       formData.append('file', uploadBlob, uploadFileName);
       formData.append('iv', encrypted.iv);
       formData.append('salt', encrypted.salt);
       formData.append('original_name', packaged.name);
       formData.append('original_size', encrypted.originalSize);
-      formData.append('compressed', '1');
-      formData.append('max_downloads', burnOnRead ? '1' : '10');
+      formData.append('compressed', encrypted.compressed ? '1' : '0');
+      formData.append('max_downloads', effectiveMaxDownloads.toString());
       formData.append('burn_on_read', burnOnRead ? '1' : '0');
       formData.append('expiry_hours', expiryHours.toString());
       formData.append('sharing_mode', useSteganography && burnOnRead ? 'both' : useSteganography ? 'steganography' : burnOnRead ? 'burn_on_read' : 'standard');
       // Server-stored format marker for chunked ciphertext
       formData.append('checksum', buildChunkMarker(encrypted.chunked));
+      formData.append('access_hash', await computeAccessProof(encrypted.password));
 
       const data = await api.upload(formData, (p) => {
         throttle.push({ stage: 'uploading', percent: 88 + Math.round(p.percent * 0.12) });
       });
 
       const transferCode = createTransferCode(data.file_id, encrypted.password);
+
+      if (data.owner_token && data.file_id) {
+        try {
+          sessionStorage.setItem(`fs_owner_${data.file_id}`, data.owner_token);
+        } catch (_) {}
+      }
 
       let bestUrl = `${window.location.origin}/download?code=${encodeURIComponent(transferCode)}`;
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -115,10 +124,19 @@ export function useEncryptAndSend(stateMachine) {
         fileCount: files.length,
         isBundle: packaged.isBundle,
         fileList: packaged.fileList,
-        isBurn: burnOnRead
+        isBurn: burnOnRead,
+        maxDownloads: effectiveMaxDownloads,
+        expiryHours,
+        ownerToken: data.owner_token || null,
       });
     } catch (err) {
-      setError(err.message || 'Something went wrong while uploading. Please try again.');
+      const status = err.status;
+      const msg = (err.message || '').toLowerCase();
+      let friendly = err.message || 'Something went wrong while uploading. Please try again.';
+      if (status === 429) friendly = 'Too many uploads. Please wait a moment and retry.';
+      else if (status === 413 || msg.includes('2 gb')) friendly = 'Upload exceeds the 2 GB limit.';
+      else if (msg.includes('network') || msg.includes('failed to fetch')) friendly = 'Network error during upload. Check your connection and retry.';
+      setError(friendly);
       stateMachine?.transitionTo(TransferState.FAILED);
       setProgress(null);
     } finally {
@@ -167,6 +185,22 @@ export function useEncryptAndSend(stateMachine) {
     setError(null);
   }, []);
 
+  const cancelTransfer = useCallback(async () => {
+    if (!result?.fileId || !result.ownerToken) return false;
+    try {
+      await api.deleteFile(result.fileId, result.ownerToken);
+      try {
+        sessionStorage.removeItem(`fs_owner_${result.fileId}`);
+      } catch (_) {}
+      return true;
+    } catch (err) {
+      setError(err.status === 403
+        ? 'Could not cancel this transfer from this browser tab.'
+        : (err.message || 'Could not cancel the transfer.'));
+      return false;
+    }
+  }, [result]);
+
   return {
     progress,
     result,
@@ -178,6 +212,7 @@ export function useEncryptAndSend(stateMachine) {
     error,
     sendFiles,
     refreshQRToken,
+    cancelTransfer,
     resetSendState
   };
 }

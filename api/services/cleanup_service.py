@@ -75,8 +75,8 @@ class CleanupService:
                     except OSError:
                         pass
 
-        except Exception as e:
-            print(f"Cleanup background task error: {e}")
+        except Exception:
+            pass
         finally:
             if conn:
                 try:

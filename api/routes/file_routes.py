@@ -1,5 +1,5 @@
 """
-SecureShare File Routes
+FileShare File Routes
 REST API endpoints for file upload, download, info, deletion, and stats.
 Uses Flask Blueprint for modular registration.
 
@@ -12,10 +12,10 @@ import urllib.parse
 # pyrefly: ignore [missing-import]
 from flask import Blueprint, request, jsonify, Response
 
-from api.config import STUN_SERVERS, TURN_SERVERS, DEFAULT_PORT
+from api.config import STUN_SERVERS, TURN_SERVERS, DEFAULT_PORT, TRUST_PROXY, is_vercel
 from api.utils import get_utc_now_iso, get_local_ips
-from api.errors import ApiError, PayloadTooLargeError, ConflictError
-from api.validation import validate_upload_form, validate_file_id
+from api.errors import ApiError, PayloadTooLargeError, ConflictError, ForbiddenError
+from api.validation import validate_upload_form, validate_file_id, validate_access_proof
 from api.rate_limit import RateLimiter
 from api.services.transfer_service import TransferService
 
@@ -34,11 +34,20 @@ def init_file_routes(transfer_service: TransferService, rate_limiter: RateLimite
 
 
 def _client_ip() -> str:
-    """Resolve the real client IP behind a reverse proxy."""
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Resolve the real client IP. Trust X-Forwarded-For only behind a known proxy."""
+    if TRUST_PROXY:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     return request.remote_addr or "unknown"
+
+
+def _request_access_proof() -> str:
+    raw = request.headers.get("X-Access-Proof") or request.args.get("proof") or ""
+    proof = validate_access_proof(raw)
+    if not proof:
+        raise ForbiddenError("Access proof required")
+    return proof
 
 
 @file_bp.route("/", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
@@ -74,7 +83,12 @@ def root():
 def health():
     if request.method == "OPTIONS":
         return ("", 204)
-    return jsonify({"status": "healthy", "timestamp": get_utc_now_iso()})
+    return jsonify({
+        "status": "healthy",
+        "timestamp": get_utc_now_iso(),
+        "persistent_storage": not is_vercel,
+        "storage": "ephemeral" if is_vercel else "local-disk",
+    })
 
 
 @file_bp.route("/api/network-info", methods=["GET", "OPTIONS"], strict_slashes=False)
@@ -83,14 +97,17 @@ def network_info():
     """Get network info for LAN/WAN detection and signaling configuration."""
     if request.method == "OPTIONS":
         return ("", 204)
-    return jsonify({
-        "local_ips": get_local_ips(),
+    payload = {
+        "local_ips": get_local_ips() if not is_vercel else [],
         "port": DEFAULT_PORT,
-        "is_lan_accessible": True,
+        "is_lan_accessible": not is_vercel,
         "stun_servers": STUN_SERVERS,
-        "turn_servers": TURN_SERVERS,
         "timestamp": get_utc_now_iso()
-    })
+    }
+    # Public TURN credentials are only useful for unused P2P code; omit in production.
+    if not is_vercel:
+        payload["turn_servers"] = TURN_SERVERS
+    return jsonify(payload)
 
 
 @file_bp.route("/api/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
@@ -152,7 +169,8 @@ def get_file_info(file_id):
 
     _rate_limiter.check("file_info", _client_ip())
     file_id = validate_file_id(file_id)
-    return jsonify(_transfer_service.get_file_info(file_id))
+    proof = _request_access_proof()
+    return jsonify(_transfer_service.get_file_info(file_id, proof))
 
 
 @file_bp.route("/api/download/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
@@ -164,9 +182,12 @@ def download_file(file_id):
 
     _rate_limiter.check("download", _client_ip())
     file_id = validate_file_id(file_id)
+    proof = _request_access_proof()
     preview = request.args.get("preview", "false").lower() == "true"
+    if preview:
+        _rate_limiter.check("preview", _client_ip())
 
-    row_dict, file_path, is_burn = _transfer_service.download_file(file_id, preview)
+    row_dict, file_path, is_burn = _transfer_service.download_file(file_id, preview, proof)
 
     def generate():
         try:
@@ -201,8 +222,16 @@ def delete_file(file_id):
     if request.method == "OPTIONS":
         return ("", 204)
 
+    _rate_limiter.check("delete", _client_ip())
     file_id = validate_file_id(file_id)
-    _transfer_service.delete_file(file_id)
+    owner_token = (
+        request.headers.get("X-Owner-Token")
+        or request.args.get("owner_token")
+        or ""
+    ).strip()
+    if not owner_token:
+        raise ForbiddenError("Owner token required")
+    _transfer_service.delete_file(file_id, owner_token)
     return jsonify({"message": "File deleted"})
 
 

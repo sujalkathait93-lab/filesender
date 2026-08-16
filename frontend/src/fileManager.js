@@ -1,5 +1,5 @@
 /**
- * SecureShare File Manager Module (LLD: File Manager)
+ * FileShare File Manager Module (LLD: File Manager)
  * Responsible for selecting, validating, inspecting, and packaging files.
  * Supports single and multi-file transfers up to 2 GB total.
  */

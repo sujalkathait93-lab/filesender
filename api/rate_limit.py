@@ -1,5 +1,5 @@
 """
-SecureShare Rate Limiter
+FileShare Rate Limiter
 Simple in-memory sliding-window limiter keyed by client IP.
 
 Design notes:

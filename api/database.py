@@ -1,5 +1,5 @@
 """
-SecureShare Database Manager
+FileShare Database Manager
 Manages SQLite connection lifecycle, schema initialization, WAL mode, and indexes.
 
 Concurrency notes:
@@ -53,7 +53,9 @@ class DatabaseManager:
                 checksum TEXT,
                 compressed INTEGER DEFAULT 1,
                 burn_on_read INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'ready'
+                preview_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'ready',
+                access_hash TEXT
             )
         """)
 
@@ -94,6 +96,8 @@ class DatabaseManager:
             ("files", "transfer_id", "TEXT"),
             ("files", "burn_on_read", "INTEGER DEFAULT 0"),
             ("files", "status", "TEXT DEFAULT 'ready'"),
+            ("files", "preview_count", "INTEGER DEFAULT 0"),
+            ("files", "access_hash", "TEXT"),
             ("transfers", "token_hash", "TEXT"),
             ("transfers", "refresh_count", "INTEGER DEFAULT 0"),
             ("transfers", "max_refreshes", "INTEGER DEFAULT 5"),

@@ -4,12 +4,14 @@ import {
   Download, Lock, Shield, Check, Key, Flame,
   Eye, X, ArrowLeft, FileText, Copy, Clock,
   Image as ImageIcon, Video, Music, FileCode, File,
-  Loader2, Search, Sparkles
+  Loader2, Search, Sparkles, Radio
 } from 'lucide-react'
 import { parseTransferCode, extractKeyFromUrl, formatBytes } from '../crypto'
+import { detectFileType } from '../fileManager'
 import { TransferStateMachine, TransferState } from '../stateMachine'
 import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../previewManager'
 import { useDownload } from '../hooks/useDownload'
+import { useP2PSession } from '../hooks/useP2PSession'
 import { FileInfoSkeleton, PreviewMediaSkeleton } from '../components/Skeletons'
 import { EmptyState, ErrorAlert, MeasurableProgressBar } from '../components/FeedbackStates'
 
@@ -50,9 +52,13 @@ function DownloadPage() {
     setManualKey,
     searchCode,
     executeDownload,
+    downloadSingleFile,
+    downloadAllFiles,
     resetDownloadState,
     revokeDecryptedUrl
   } = useDownload(stateMachine);
+
+  const { p2pStatus, p2pState, startP2P, stopP2P } = useP2PSession();
 
   // Initialize Preview Manager
   useEffect(() => {
@@ -82,6 +88,11 @@ function DownloadPage() {
     };
   }, [stateMachine]);
 
+  useEffect(() => {
+    if (fileInfo?.id) startP2P(fileInfo.id, 'receiver');
+    return () => stopP2P();
+  }, [fileInfo?.id, startP2P, stopP2P]);
+
   // Auto-search when arriving with ?code=... in the URL
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -104,6 +115,15 @@ function DownloadPage() {
     setActivePreviewItem(null);
     setPreviewSecondsLeft(PREVIEW_DURATION_SECONDS);
   };
+
+  useEffect(() => {
+    if (!showPreviewModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeAndRevokePreview();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPreviewModal]);
 
   const handleSearchCode = (targetCode, targetKey = null) => {
     if (searchInFlightRef.current || isLoading) return;
@@ -174,13 +194,13 @@ function DownloadPage() {
 
       <div className="page-header">
         <h2><Download /> Receive Files</h2>
-        <p>Paste the transfer code to connect, verify, preview, and download.</p>
+        <p>Paste the full transfer code (id + password). File ID alone cannot fetch the file.</p>
       </div>
 
       <div className="download-input" role="search">
         <input
           type="text"
-          placeholder="Paste transfer code (e.g. SEC-4BE819D7-9F8A73C2)"
+          placeholder="Paste transfer code (e.g. FS-A1B2C3D4E5F60708-9F8A73C21D2E3F40)"
           value={codeInput}
           onChange={(e) => setCodeInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSearchCode()}
@@ -191,30 +211,32 @@ function DownloadPage() {
           disabled={isLoading || isDecrypting}
           aria-label="Transfer Code"
         />
-        <button
-          className="btn btn-secondary"
-          onClick={handlePasteClipboard}
-          title="Paste from clipboard"
-          disabled={isLoading || isDecrypting}
-        >
-          <Copy size={16} /> Paste
-        </button>
-        <button
-          className="btn btn-primary"
-          onClick={() => handleSearchCode()}
-          disabled={isLoading || isDecrypting || !codeInput.trim()}
-          aria-busy={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <Loader2 size={18} className="spin" /> Connecting...
-            </>
-          ) : (
-            <>
-              <Key size={18} /> Connect & Receive
-            </>
-          )}
-        </button>
+        <div className="download-input-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={handlePasteClipboard}
+            title="Paste from clipboard"
+            disabled={isLoading || isDecrypting}
+          >
+            <Copy size={16} /> Paste
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => handleSearchCode()}
+            disabled={isLoading || isDecrypting || !codeInput.trim()}
+            aria-busy={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 size={18} className="spin" /> Connecting...
+              </>
+            ) : (
+              <>
+                <Key size={18} /> Connect & Receive
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Skeletons: rendered during initial lookup to prevent layout shifts (CLS) */}
@@ -232,8 +254,8 @@ function DownloadPage() {
       {!fileInfo && !isLoading && !error && !success && !isBurned && (
         <EmptyState
           icon={Search}
-          title="Ready to receive files"
-          description="Enter a transfer code or link from the sender to securely connect, inspect with 30-second preview, and decrypt."
+          title="No active transfer yet"
+          description="Paste a transfer code or share link from the sender to connect, preview, and download."
           actionText="Paste from Clipboard"
           onAction={handlePasteClipboard}
         />
@@ -255,16 +277,22 @@ function DownloadPage() {
 
           <div className="file-meta">
             <div className="meta-item">
-              <label>File Size</label>
+              <label>Total Size</label>
               <span>{formatBytes(fileInfo.original_size)}</span>
             </div>
             <div className="meta-item">
-              <label>Protection</label>
-              <span style={{ color: '#10b981' }}>AES-256-GCM</span>
+              <label>Download Limit</label>
+              <span style={{ color: fileInfo.max_downloads === 0 ? '#10b981' : undefined }}>
+                {fileInfo.max_downloads === 0
+                  ? 'Unlimited'
+                  : fileInfo.max_downloads === 1
+                  ? '1 (Burn-on-Read)'
+                  : `${fileInfo.download_count}/${fileInfo.max_downloads} used`}
+              </span>
             </div>
             <div className="meta-item">
-              <label>Status</label>
-              <span>{statusMessage}</span>
+              <label>Expires</label>
+              <span>{new Date(fileInfo.expires_at).toLocaleTimeString()}</span>
             </div>
           </div>
 
@@ -279,6 +307,12 @@ function DownloadPage() {
                   File will self-destruct from the server upon download.
                 </span>
               </div>
+            </div>
+          )}
+
+          {p2pStatus && (p2pState === 'waiting' || p2pState === 'connected') && (
+            <div className="status-message info" style={{ marginTop: '1rem' }}>
+              <Radio size={18} /> {p2pStatus} REST download below still works.
             </div>
           )}
 
@@ -357,21 +391,80 @@ function DownloadPage() {
           </div>
           <h3>Transfer Decrypted Successfully!</h3>
 
-          <div className="success-file-box">
-            <div className="success-file-details">
-              <div className="success-file-icon">
-                <FileText size={20} />
+          {/* If Multi-File Bundle: Show All Unpacked Files with Individual Actions */}
+          {decryptedFiles.length > 1 ? (
+            <div className="unpacked-files-container" style={{ margin: '1.25rem 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
+                  Files in Transfer ({decryptedFiles.length})
+                </h4>
+                <button
+                  className="btn btn-primary"
+                  onClick={downloadAllFiles}
+                  style={{ padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}
+                >
+                  <Download size={16} /> Download All Files
+                </button>
               </div>
-              <div className="success-file-text">
-                <strong className="success-file-name">
-                  {decryptedFiles.length > 1
-                    ? `${decryptedFiles.length} files saved (${fileInfo.original_name})`
-                    : fileInfo.original_name}
-                </strong>
-                <span className="success-file-size">{formatBytes(fileInfo.original_size)}</span>
+
+              <div className="unpacked-files-list">
+                {decryptedFiles.map((file, idx) => (
+                  <div key={idx} className="unpacked-file-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', background: 'var(--bg-base)', borderRadius: '10px', marginBottom: '0.5rem', border: '1px solid var(--border-default)', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
+                      <div className="file-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', width: 34, height: 34 }}>
+                        {getCategoryIcon(detectFileType(file.name, file.type).category)}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--foreground)', wordBreak: 'break-all' }}>
+                          {file.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>
+                          {formatBytes(file.size)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          const prepared = previewManagerRef.current.preparePreview(file);
+                          setActivePreviewItem(prepared);
+                          setPreviewBundleFiles(decryptedFiles);
+                          setActivePreviewIndex(idx);
+                          setShowPreviewModal(true);
+                        }}
+                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
+                        title="Preview this file"
+                      >
+                        <Eye size={14} /> Preview
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => downloadSingleFile(file)}
+                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
+                        title="Download this file"
+                      >
+                        <Download size={14} /> Download
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="success-file-box">
+              <div className="success-file-details">
+                <div className="success-file-icon">
+                  <FileText size={20} />
+                </div>
+                <div className="success-file-text">
+                  <strong className="success-file-name">{decryptedFiles[0]?.name || fileInfo.original_name}</strong>
+                  <span className="success-file-size">{formatBytes(decryptedFiles[0]?.size || fileInfo.original_size)}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {isBurned && (
             <div className="burn-banner" style={{ background: 'rgba(220, 38, 38, 0.2)', borderColor: '#ef4444', marginTop: '1.25rem' }}>
@@ -385,10 +478,10 @@ function DownloadPage() {
             </div>
           )}
 
-          {decryptedBlobUrl && (
+          {decryptedFiles.length <= 1 && decryptedBlobUrl && (
             <a
               href={decryptedBlobUrl}
-              download={fileInfo.original_name}
+              download={decryptedFiles[0]?.name || fileInfo.original_name}
               className="btn btn-primary btn-lg"
               style={{ width: '100%', justifyContent: 'center', minHeight: '48px', textDecoration: 'none', marginTop: '1rem' }}
             >

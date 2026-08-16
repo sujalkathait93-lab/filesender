@@ -1,5 +1,5 @@
 """
-SecureShare API Errors
+FileShare API Errors
 Centralized exception types mapped to HTTP responses by the global error handler.
 
 Each error carries an HTTP status code and a user-facing detail message,
@@ -22,6 +22,11 @@ class ApiError(Exception):
 
     def to_dict(self):
         return {"detail": self.detail}
+
+
+class ForbiddenError(ApiError):
+    status_code = 403
+    detail = "Not allowed"
 
 
 class NotFoundError(ApiError):

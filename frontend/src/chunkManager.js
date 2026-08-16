@@ -1,5 +1,5 @@
 /**
- * SecureShare Chunk Manager
+ * FileShare Chunk Manager
  * High-performance, streaming memory-efficient chunking engine supporting up to 2 GB transfers.
  * Avoids loading entire files into RAM by operating slice-by-slice.
  */
