@@ -1,0 +1,25 @@
+# Dependencies & caches
+frontend/node_modules/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Tests & development files
+tests/
+frontend/test-results/
+frontend/e2e/
+.agents/
+.cursor/
+.git/
+.github/
+
+# Runtime data
+database/
+uploads/
+*.db
+*.db-wal
+*.db-shm

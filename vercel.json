@@ -3,7 +3,8 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "excludeFiles": "{frontend/**,tests/**,database/**,uploads/**,__pycache__/**}"
     }
   },
   "rewrites": [
