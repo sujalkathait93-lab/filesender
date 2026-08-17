@@ -121,14 +121,20 @@ def create_app():
         expose_headers=CORS_EXPOSE_HEADERS
     )
 
-    # SocketIO setup
-    socketio = SocketIO(
-        app,
-        cors_allowed_origins=cors_origins,
-        async_mode="threading",
-        logger=False,
-        engineio_logger=False
-    )
+    # SocketIO setup (local development only; serverless skips WebSockets)
+    socketio = None
+    if not is_vercel:
+        try:
+            socketio = SocketIO(
+                app,
+                cors_allowed_origins=cors_origins,
+                async_mode="threading",
+                logger=False,
+                engineio_logger=False
+            )
+            register_signaling_handlers(socketio)
+        except Exception as e:
+            logger.warning("SocketIO init skipped: %s", e)
 
     # Initialize infrastructure layers
     db_manager = DatabaseManager(DB_PATH)
@@ -142,9 +148,6 @@ def create_app():
     # Register HTTP routes blueprint and inject dependencies
     init_file_routes(transfer_service, rate_limiter)
     app.register_blueprint(file_bp)
-
-    # Register SocketIO signaling handlers
-    register_signaling_handlers(socketio)
 
     # Security headers middleware
     @app.after_request
@@ -190,4 +193,7 @@ app, socketio = create_app()
 
 if __name__ == "__main__":
     logger.info("Starting FileShare Flask + SocketIO Server on %s:%s", HOST, DEFAULT_PORT)
-    socketio.run(app, host=HOST, port=DEFAULT_PORT, debug=not IS_PRODUCTION)
+    if socketio:
+        socketio.run(app, host=HOST, port=DEFAULT_PORT, debug=not IS_PRODUCTION)
+    else:
+        app.run(host=HOST, port=DEFAULT_PORT, debug=not IS_PRODUCTION)
