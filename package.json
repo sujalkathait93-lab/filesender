@@ -1,0 +1,8 @@
+{
+  "name": "fileshare",
+  "version": "2.4.0",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build"
+  }
+}
