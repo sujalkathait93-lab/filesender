@@ -3,13 +3,13 @@
  * Assembles SignalingClient, PeerManager, SenderChannel, and ReceiverChannel.
  */
 
-import { SignalingClient } from './SignalingClient';
-import { PeerManager } from './PeerManager';
-import { SenderChannel } from './SenderChannel';
-import { ReceiverChannel } from './ReceiverChannel';
-import { generateKey } from '../crypto';
-import { compressData } from '../compression';
-import { bytesToHex } from '../hexUtils';
+import { SignalingClient } from './SignalingClient.js';
+import { PeerManager } from './PeerManager.js';
+import { SenderChannel } from './SenderChannel.js';
+import { ReceiverChannel } from './ReceiverChannel.js';
+import { generateKey } from '../crypto.js';
+import { compressData } from '../compression.js';
+import { bytesToHex } from '../hexUtils.js';
 
 export class WebRTCSession {
   constructor({ serverUrl, roomCode, role = 'sender', onStatus, onProgress, onError, onComplete, onConnectionMode }) {

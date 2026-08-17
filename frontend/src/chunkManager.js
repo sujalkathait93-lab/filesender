@@ -4,8 +4,8 @@
  * Avoids loading entire files into RAM by operating slice-by-slice.
  */
 
-import { encryptChunkData, decryptChunkData, deriveKey } from './crypto';
-import { hexToBytes } from './hexUtils';
+import { encryptChunkData, decryptChunkData, deriveKey } from './crypto.js';
+import { hexToBytes } from './hexUtils.js';
 
 export const DEFAULT_CHUNK_SIZE = 512 * 1024; // 512 KB per chunk
 export const MAX_TOTAL_TRANSFER_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB

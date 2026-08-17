@@ -3,9 +3,9 @@
  * Handles incoming binary chunks, chunk collection, decryption, and decompression.
  */
 
-import { deriveKey, decryptChunkData } from '../crypto';
-import { decompressData } from '../compression';
-import { hexToBytes } from '../hexUtils';
+import { deriveKey, decryptChunkData } from '../crypto.js';
+import { decompressData } from '../compression.js';
+import { hexToBytes } from '../hexUtils.js';
 
 const CHUNK_SIZE = 64 * 1024;
 

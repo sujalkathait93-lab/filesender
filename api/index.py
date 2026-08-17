@@ -134,14 +134,14 @@ def create_app():
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=(), payment=()"
         )
-        # CSP: allow the SPA to load its own scripts/styles/images and connect to the API
+        # CSP: allow the SPA to load its own scripts/styles/images, Vercel insights, and connect to the API/WS
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self' wss: ws:; "
+            "connect-src 'self' wss: ws: https://vitals.vercel-insights.com; "
             "frame-ancestors 'none'; "
             "base-uri 'none'"
         )

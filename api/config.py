@@ -65,7 +65,9 @@ DEFAULT_PORT = int(os.environ.get("PORT", 8000))
 
 # CORS exposed headers
 CORS_EXPOSE_HEADERS = [
+    "Content-Length",
     "Content-Disposition",
+    "Retry-After",
     "X-Original-Name",
     "X-Compressed",
     "X-Burn-On-Read",

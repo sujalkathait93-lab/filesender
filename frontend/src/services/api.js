@@ -4,12 +4,13 @@
  * call fetch() directly. Keeps error handling and endpoint URLs in one place.
  */
 
-const API_URL = window.location.origin;
+const API_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) || window.location.origin;
 
 /** Parse a JSON response; throw a readable Error on failure. */
 async function parseResponse(response) {
   if (response.status === 204) return null;
-  const isJson = (response.headers.get('content-type') || '').includes('application/json');
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
   const body = isJson ? await response.json().catch(() => null) : null;
 
   if (!response.ok) {

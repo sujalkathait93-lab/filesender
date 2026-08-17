@@ -3,7 +3,7 @@
  * Handles streaming binary file chunk transmission with flow control.
  */
 
-import { encryptChunkData } from '../crypto';
+import { encryptChunkData } from '../crypto.js';
 
 const CHUNK_SIZE = 64 * 1024; // 64 KB chunks
 const BUFFERED_AMOUNT_LOW = 256 * 1024; // 256 KB flow control threshold

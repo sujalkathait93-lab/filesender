@@ -42,12 +42,14 @@ function App() {
   const detectServer = async () => {
     try {
       const res = await fetch('/api/health', { signal: AbortSignal.timeout(4000) });
+      const text = await res.text();
       setServerOnline(res.ok);
       if (res.ok) {
-        const body = await res.json().catch(() => null);
+        let body = null;
+        try { body = JSON.parse(text); } catch { body = null; }
         setEphemeralStorage(body && body.persistent_storage === false);
       }
-    } catch {
+    } catch (_) {
       setServerOnline(false);
     }
   };

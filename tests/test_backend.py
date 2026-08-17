@@ -451,6 +451,11 @@ def run_all_tests():
     return failed == 0
 
 
+def test_backend_scenarios():
+    """Pytest test case running all backend scenarios."""
+    assert run_all_tests() is True
+
+
 if __name__ == "__main__":
     success = run_all_tests()
     sys.exit(0 if success else 1)
