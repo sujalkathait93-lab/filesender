@@ -44,30 +44,38 @@ async function postJson(path) {
  */
 function uploadFormData(path, formData, onProgress) {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_URL}${path}`);
+    const doUpload = (urlPath, isRetry = false) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}${urlPath}`);
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress({ loaded: e.loaded, total: e.total, percent: Math.round((e.loaded / e.total) * 100) });
-      }
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress({ loaded: e.loaded, total: e.total, percent: Math.round((e.loaded / e.total) * 100) });
+        }
+      };
+
+      xhr.onload = () => {
+        let body = null;
+        try { body = JSON.parse(xhr.responseText || 'null'); } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(body);
+        } else if (!isRetry && (xhr.status === 405 || xhr.status === 404)) {
+          // Automatic fallback if proxy or serverless rewrite changed the prefix
+          const altPath = urlPath.startsWith('/api') ? urlPath.replace(/^\/api/, '') : `/api${urlPath}`;
+          doUpload(altPath, true);
+        } else {
+          const err = new Error((body && body.detail) || `Upload failed (${xhr.status})`);
+          err.status = xhr.status;
+          err.body = body;
+          reject(err);
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.onabort = () => reject(new Error('Upload aborted'));
+      xhr.send(formData);
     };
 
-    xhr.onload = () => {
-      let body = null;
-      try { body = JSON.parse(xhr.responseText || 'null'); } catch (_) {}
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(body);
-      } else {
-        const err = new Error((body && body.detail) || `Upload failed (${xhr.status})`);
-        err.status = xhr.status;
-        err.body = body;
-        reject(err);
-      }
-    };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.onabort = () => reject(new Error('Upload aborted'));
-    xhr.send(formData);
+    doUpload(path);
   });
 }
 
