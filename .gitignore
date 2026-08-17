@@ -9,6 +9,7 @@ venv/
 env/
 
 # ─── Build artifacts ────────────────────────────────────────────
+.vercel/
 frontend/dist/
 dist/
 build/
