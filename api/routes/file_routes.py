@@ -51,6 +51,10 @@ def _request_access_proof() -> str:
 
 
 @file_bp.route("/", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/api", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/api/", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/api/index.py", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/index.py", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
 def root():
     if request.method == "OPTIONS":
         return ("", 204)
