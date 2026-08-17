@@ -93,9 +93,22 @@ def _start_cleanup_thread(cleanup_service: CleanupService):
     return thread
 
 
+class VercelPathMiddleware:
+    """WSGI middleware to resolve original request paths rewritten by Vercel."""
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        matched = environ.get("HTTP_X_MATCHED_PATH") or environ.get("HTTP_X_VERCEL_PATH")
+        if matched and environ.get("PATH_INFO") in ("/api/index.py", "/api/index", "/index.py", "/api", "/api/"):
+            environ["PATH_INFO"] = matched
+        return self.wsgi_app(environ, start_response)
+
+
 def create_app():
     """Application factory for Flask + SocketIO."""
     app = Flask(__name__)
+    app.wsgi_app = VercelPathMiddleware(app.wsgi_app)
     app.config['SECRET_KEY'] = SECRET_KEY
     app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE + 1024 * 1024  # 2 GB + multipart overhead
 

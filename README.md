@@ -22,6 +22,7 @@ Files are encrypted in the browser with **AES-256-GCM** before they leave the de
 - In-browser preview (images, PDF, video, text)
 - Steganography vault (hide a payload in an image)
 - WebRTC P2P (works locally; not supported on Vercel serverless)
+- Responsive mobile UI optimized for iOS & Android with Safe Area insets
 
 ## Deploy on Vercel
 
@@ -35,7 +36,7 @@ Files are encrypted in the browser with **AES-256-GCM** before they leave the de
 
 **Live URL:** https://filesender-sujalkathait93-6384s-projects.vercel.app
 
-On Vercel, files live in `/tmp` (temporary). Keep uploads small. WebSocket / P2P signaling does not work on serverless.
+On Vercel, files live in `/tmp` (ephemeral). Keep uploads small. WebSocket / P2P signaling does not work on serverless.
 
 ### Push updates to GitHub
 
@@ -100,7 +101,7 @@ filesender/
 ## Tests
 
 ```powershell
-python -m unittest tests/test_backend.py -v
+python tests/test_backend.py
 node tests/crypto-roundtrip.mjs
 node tests/preview-and-states.test.mjs
 ```
