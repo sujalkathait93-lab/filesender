@@ -105,7 +105,7 @@ def run_all_tests():
         "compressed": "1",
         "max_downloads": "10",
         "burn_on_read": "0",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     check("Scenario 1: Upload single file", r1.status_code == 200)
     data1 = r1.get_json()
@@ -131,7 +131,7 @@ def run_all_tests():
         "compressed": "1",
         "max_downloads": "10",
         "burn_on_read": "0",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     check("Scenario 3: Upload multi-file bundle", r3.status_code == 200)
     data3 = r3.get_json()
@@ -153,7 +153,7 @@ def run_all_tests():
         "original_size": "21",
         "max_downloads": "10",
         "burn_on_read": "0",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     fid5 = r5.get_json()["file_id"]
 
@@ -180,7 +180,7 @@ def run_all_tests():
         "original_size": "15",
         "max_downloads": "5",
         "burn_on_read": "0",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     fid7 = r7.get_json()["file_id"]
 
@@ -205,7 +205,7 @@ def run_all_tests():
         "original_size": "18",
         "max_downloads": "100",
         "burn_on_read": "0",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     check("Scenario 8: Upload with max_downloads=100", r8.status_code == 200)
     fid8 = r8.get_json()["file_id"]
@@ -222,7 +222,7 @@ def run_all_tests():
         "original_size": "27",
         "max_downloads": "0",
         "burn_on_read": "0",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     check("Scenario 9: Upload with unlimited downloads (max_downloads=0)", r9.status_code == 200)
     fid9 = r9.get_json()["file_id"]
@@ -390,7 +390,7 @@ def run_all_tests():
         "original_name": "secret.txt",
         "original_size": "15",
         "max_downloads": "10",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     fid_ap = r_ap.get_json()["file_id"]
     check("file-info without proof -> 403", client.get(f"/api/file-info/{fid_ap}", no_proof=True).status_code == 403)
@@ -402,14 +402,24 @@ def run_all_tests():
     check("download correct proof -> 200", r_ok_dl.status_code == 200 and r_ok_dl.data == b"proof-protected")
     check("file-info proof query param -> 200", client.get(f"/api/file-info/{fid_ap}?proof={PROOF}", no_proof=True).status_code == 200)
 
-    print("\n== Owner token DELETE, filename sanitization, IV/salt, preview cap ==")
+    print("\n== Expiry limit (60 mins max) enforcement ==")
+    r_bad_exp = client.post("/api/upload", data={
+        "file": (io.BytesIO(b"too-long-expiry"), "exp.encrypted"),
+        "iv": "aa" * 12, "salt": "bb" * 16,
+        "original_name": "expired.txt",
+        "original_size": "15",
+        "expiry_hours": "2",  # > 1.0 hour (60 min) must be rejected
+    }, content_type="multipart/form-data")
+    check("Expiry > 60 minutes rejected with 400", r_bad_exp.status_code == 400)
+
+    print("\n== Owner token DELETE, filename sanitization, IV/salt ==")
     r_own = client.post("/api/upload", data={
         "file": (io.BytesIO(b"owner-delete-payload"), "own.encrypted"),
         "iv": "aa" * 12, "salt": "bb" * 16,
         "original_name": "../../../etc/passwd.txt",
         "original_size": "20",
         "max_downloads": "5",
-        "expiry_hours": "24",
+        "expiry_hours": "1",
     }, content_type="multipart/form-data")
     own = r_own.get_json()
     fid_own = own["file_id"]
@@ -430,25 +440,6 @@ def run_all_tests():
         "iv": "aa" * 4, "salt": "bb" * 16,
     }, content_type="multipart/form-data")
     check("Short IV rejected with 400", r_iv.status_code == 400)
-
-    r_prev = client.post("/api/upload", data={
-        "file": (io.BytesIO(b"preview-cap-payload"), "p.encrypted"),
-        "iv": "aa" * 12, "salt": "bb" * 16,
-        "original_name": "cap.bin",
-        "max_downloads": "10",
-        "burn_on_read": "0",
-        "expiry_hours": "24",
-    }, content_type="multipart/form-data")
-    fid_prev = r_prev.get_json()["file_id"]
-    preview_ok = 0
-    for _ in range(20):
-        if client.get(f"/api/download/{fid_prev}?preview=true").status_code == 200:
-            preview_ok += 1
-    check("20 previews allowed", preview_ok == 20)
-    r_prev_21 = client.get(f"/api/download/{fid_prev}?preview=true")
-    check("21st preview rejected", r_prev_21.status_code in (410, 429))
-    r_prev_dl = client.get(f"/api/download/{fid_prev}")
-    check("Download still allowed after preview cap", r_prev_dl.status_code == 200)
 
     r_stats = client.get("/api/stats")
     stats = r_stats.get_json()

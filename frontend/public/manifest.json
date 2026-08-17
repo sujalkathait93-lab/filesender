@@ -1,0 +1,18 @@
+{
+  "name": "FileShare — Private File Transfer",
+  "short_name": "FileShare",
+  "description": "Zero-knowledge end-to-end encrypted file sharing directly in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -147,7 +147,8 @@ export function createShareMessage({ transferCode, shareUrl, expiryHours, fileCo
     parts.push(`Link: ${shareUrl}`);
   }
   if (expiryHours) {
-    parts.push(`Expires: ${expiryHours} hour${expiryHours > 1 ? 's' : ''}`);
+    const mins = Math.round(expiryHours * 60);
+    parts.push(`Expires: ${mins} minutes`);
   }
   if (fileCount && totalSize) {
     parts.push(`Files: ${fileCount} file${fileCount > 1 ? 's' : ''} (${totalSize})`);

@@ -4,12 +4,12 @@ import {
   Download, Lock, Shield, Check, Key, Flame,
   Eye, X, ArrowLeft, FileText, Copy, Clock,
   Image as ImageIcon, Video, Music, FileCode, File,
-  Loader2, Search, Sparkles, Radio
+  Loader2, Search, Radio, RotateCcw, FolderDown, ShieldCheck
 } from 'lucide-react'
 import { parseTransferCode, extractKeyFromUrl, formatBytes } from '../crypto'
 import { detectFileType } from '../fileManager'
 import { TransferStateMachine, TransferState } from '../stateMachine'
-import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../previewManager'
+import { PreviewManager } from '../previewManager'
 import { useDownload } from '../hooks/useDownload'
 import { useP2PSession } from '../hooks/useP2PSession'
 import { FileInfoSkeleton, PreviewMediaSkeleton } from '../components/Skeletons'
@@ -27,9 +27,8 @@ function DownloadPage() {
   const searchInFlightRef = useRef(false);
   const lastSearchedCodeRef = useRef(null);
 
-  // 30-Second Preview State
+  // Preview State (No artificial time limit)
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [previewSecondsLeft, setPreviewSecondsLeft] = useState(PREVIEW_DURATION_SECONDS);
   const [activePreviewItem, setActivePreviewItem] = useState(null);
   const [previewBundleFiles, setPreviewBundleFiles] = useState([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
@@ -63,11 +62,6 @@ function DownloadPage() {
   // Initialize Preview Manager
   useEffect(() => {
     previewManagerRef.current = new PreviewManager({
-      onTick: (secs) => setPreviewSecondsLeft(secs),
-      onExpire: () => {
-        setShowPreviewModal(false);
-        setActivePreviewItem(null);
-      },
       onClose: () => {
         setShowPreviewModal(false);
         setActivePreviewItem(null);
@@ -113,7 +107,6 @@ function DownloadPage() {
       previewManagerRef.current.close();
     }
     setActivePreviewItem(null);
-    setPreviewSecondsLeft(PREVIEW_DURATION_SECONDS);
   }, []);
 
   useEffect(() => {
@@ -123,7 +116,7 @@ function DownloadPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showPreviewModal]);
+  }, [showPreviewModal, closeAndRevokePreview]);
 
   const handleSearchCode = (targetCode, targetKey = null) => {
     if (searchInFlightRef.current || isLoading) return;
@@ -194,7 +187,7 @@ function DownloadPage() {
 
       <div className="page-header">
         <h2><Download /> Receive Files</h2>
-        <p>Paste the full transfer code (id + password). File ID alone cannot fetch the file.</p>
+        <p>Paste your full transfer code below to connect, preview, and download encrypted files.</p>
       </div>
 
       <div className="download-input" role="search">
@@ -232,17 +225,17 @@ function DownloadPage() {
               </>
             ) : (
               <>
-                <Key size={18} /> Connect & Receive
+                <Key size={18} /> Connect &amp; Receive
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Skeletons: rendered during initial lookup to prevent layout shifts (CLS) */}
+      {/* Skeletons */}
       {isLoading && <FileInfoSkeleton />}
 
-      {/* Error state with retry action */}
+      {/* Error state */}
       {error && !isLoading && (
         <ErrorAlert
           message={error}
@@ -254,8 +247,8 @@ function DownloadPage() {
       {!fileInfo && !isLoading && !error && !success && !isBurned && (
         <EmptyState
           icon={Search}
-          title="No active transfer yet"
-          description="Paste a transfer code or share link from the sender to connect, preview, and download."
+          title="No active transfer selected"
+          description="Enter a transfer code or share link from the sender to connect, inspect file details, preview, and download."
           actionText="Paste from Clipboard"
           onAction={handlePasteClipboard}
         />
@@ -264,7 +257,7 @@ function DownloadPage() {
       {fileInfo && !success && (
         <div className="file-info animate-in">
           <div className="file-info-header">
-            <div className="file-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#10b981' }}>
+            <div className="file-icon" style={{ backgroundColor: 'var(--secondary-tint)', color: 'var(--secondary)' }}>
               <FileText size={24} />
             </div>
             <div className="file-details">
@@ -281,13 +274,13 @@ function DownloadPage() {
               <span>{formatBytes(fileInfo.original_size)}</span>
             </div>
             <div className="meta-item">
-              <label>Download Limit</label>
-              <span style={{ color: fileInfo.max_downloads === 0 ? '#10b981' : undefined }}>
+              <label>Downloads</label>
+              <span style={{ color: fileInfo.max_downloads === 0 ? 'var(--secondary)' : undefined }}>
                 {fileInfo.max_downloads === 0
                   ? 'Unlimited'
                   : fileInfo.max_downloads === 1
-                  ? '1 (Burn-on-Read)'
-                  : `${fileInfo.download_count}/${fileInfo.max_downloads} used`}
+                  ? '1 (Burn on read)'
+                  : `${fileInfo.download_count} of ${fileInfo.max_downloads} used`}
               </span>
             </div>
             <div className="meta-item">
@@ -298,13 +291,13 @@ function DownloadPage() {
 
           {fileInfo.burn_on_read && !isBurned && (
             <div className="burn-banner">
-              <Flame size={24} style={{ color: '#ef4444' }} />
+              <Flame size={24} style={{ color: 'var(--error)' }} />
               <div>
-                <strong style={{ fontSize: '0.95rem', display: 'block', color: '#fca5a5' }}>
+                <strong style={{ fontSize: '0.95rem', display: 'block' }}>
                   Burn-on-Read Active
                 </strong>
-                <span style={{ fontSize: '0.82rem', color: 'rgba(254, 202, 202, 0.8)' }}>
-                  File will self-destruct from the server upon download.
+                <span style={{ fontSize: '0.825rem' }}>
+                  File permanently self-destructs from the server immediately after download.
                 </span>
               </div>
             </div>
@@ -330,10 +323,6 @@ function DownloadPage() {
                   width: '100%',
                   marginTop: '0.5rem',
                   padding: '0.9rem',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid #10b981',
-                  borderRadius: '10px',
-                  color: 'var(--foreground)',
                   fontFamily: 'monospace'
                 }}
               />
@@ -358,9 +347,10 @@ function DownloadPage() {
                 onClick={() => executeDownload(false, handlePreviewReady)}
                 disabled={isDecrypting}
                 style={{ flex: 1, minHeight: '48px' }}
+                title="View files in browser without downloading"
               >
                 {isDecrypting ? <Loader2 size={18} className="spin" /> : <Eye size={18} />}
-                <span>30-Sec Preview</span>
+                <span>Preview Files</span>
               </button>
               <button
                 className="btn btn-primary"
@@ -375,7 +365,7 @@ function DownloadPage() {
                   </>
                 ) : (
                   <>
-                    <Lock size={18} /> Save & Download
+                    <Lock size={18} /> Save &amp; Download
                   </>
                 )}
               </button>
@@ -395,38 +385,33 @@ function DownloadPage() {
           {decryptedFiles.length > 1 ? (
             <div className="unpacked-files-container" style={{ margin: '1.25rem 0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--foreground)' }}>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--fg-main)' }}>
                   Files in Transfer ({decryptedFiles.length})
                 </h4>
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary btn-sm"
                   onClick={downloadAllFiles}
-                  style={{ padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}
                 >
-                  <Download size={16} /> Download All Files
+                  <FolderDown size={16} /> Download All ({decryptedFiles.length} Files)
                 </button>
               </div>
 
               <div className="unpacked-files-list">
                 {decryptedFiles.map((file, idx) => (
-                  <div key={idx} className="unpacked-file-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', background: 'var(--bg-base)', borderRadius: '10px', marginBottom: '0.5rem', border: '1px solid var(--border-default)', gap: '0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                      <div className="file-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', width: 34, height: 34 }}>
+                  <div key={idx} className="file-item">
+                    <div className="file-item-left">
+                      <div className="file-icon" style={{ backgroundColor: 'var(--secondary-tint)', color: 'var(--secondary)' }}>
                         {getCategoryIcon(detectFileType(file.name, file.type).category)}
                       </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--foreground)', wordBreak: 'break-all' }}>
-                          {file.name}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)' }}>
-                          {formatBytes(file.size)}
-                        </div>
+                      <div>
+                        <div className="file-item-name">{file.name}</div>
+                        <div className="file-item-size">{formatBytes(file.size)}</div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                       <button
-                        className="btn btn-secondary"
+                        className="btn btn-secondary btn-sm"
                         onClick={() => {
                           const prepared = previewManagerRef.current.preparePreview(file);
                           setActivePreviewItem(prepared);
@@ -434,15 +419,13 @@ function DownloadPage() {
                           setActivePreviewIndex(idx);
                           setShowPreviewModal(true);
                         }}
-                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
                         title="Preview this file"
                       >
                         <Eye size={14} /> Preview
                       </button>
                       <button
-                        className="btn btn-primary"
+                        className="btn btn-primary btn-sm"
                         onClick={() => downloadSingleFile(file)}
-                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
                         title="Download this file"
                       >
                         <Download size={14} /> Download
@@ -455,10 +438,10 @@ function DownloadPage() {
           ) : (
             <div className="success-file-box">
               <div className="success-file-details">
-                <div className="success-file-icon">
+                <div className="file-icon" style={{ backgroundColor: 'var(--secondary-tint)', color: 'var(--secondary)' }}>
                   <FileText size={20} />
                 </div>
-                <div className="success-file-text">
+                <div>
                   <strong className="success-file-name">{decryptedFiles[0]?.name || fileInfo.original_name}</strong>
                   <span className="success-file-size">{formatBytes(decryptedFiles[0]?.size || fileInfo.original_size)}</span>
                 </div>
@@ -467,11 +450,11 @@ function DownloadPage() {
           )}
 
           {isBurned && (
-            <div className="burn-banner" style={{ background: 'rgba(220, 38, 38, 0.2)', borderColor: '#ef4444', marginTop: '1.25rem' }}>
-              <Flame size={24} style={{ color: '#ef4444' }} />
+            <div className="burn-banner">
+              <Flame size={24} style={{ color: 'var(--error)' }} />
               <div>
-                <strong style={{ fontSize: '1rem', color: '#f87171' }}>File Self-Destructed & Purged!</strong>
-                <p style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '0.2rem' }}>
+                <strong style={{ fontSize: '0.95rem' }}>File Self-Destructed &amp; Purged!</strong>
+                <p style={{ fontSize: '0.825rem', marginTop: '0.2rem' }}>
                   The server permanently deleted this file after your download.
                 </p>
               </div>
@@ -483,33 +466,33 @@ function DownloadPage() {
               href={decryptedBlobUrl}
               download={decryptedFiles[0]?.name || fileInfo.original_name}
               className="btn btn-primary btn-lg"
-              style={{ width: '100%', justifyContent: 'center', minHeight: '48px', textDecoration: 'none', marginTop: '1rem' }}
+              style={{ width: '100%', textDecoration: 'none', marginTop: '1rem' }}
             >
               <Download size={20} /> Save File to Downloads
             </a>
           )}
 
-          <button className="btn btn-secondary" onClick={handleNewSearch} style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem', minHeight: '48px' }}>
-            Receive Another File
+          <button className="btn btn-secondary" onClick={handleNewSearch} style={{ width: '100%', marginTop: '0.75rem', minHeight: '48px' }}>
+            <RotateCcw size={16} /> Receive Another File
           </button>
         </div>
       )}
 
       {isBurned && !success && (
-        <div className="burn-banner" style={{ background: 'rgba(220, 38, 38, 0.2)', borderColor: '#ef4444', marginTop: '1.25rem' }}>
-          <Flame size={24} style={{ color: '#ef4444' }} />
+        <div className="burn-banner">
+          <Flame size={24} style={{ color: 'var(--error)' }} />
           <div>
-            <strong style={{ fontSize: '1rem', color: '#f87171' }}>File Self-Destructed & Purged!</strong>
-            <p style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '0.2rem' }}>
+            <strong style={{ fontSize: '0.95rem' }}>File Self-Destructed &amp; Purged!</strong>
+            <p style={{ fontSize: '0.825rem', marginTop: '0.2rem' }}>
               The server permanently deleted this file.
             </p>
           </div>
         </div>
       )}
 
-      {/* Universal 30-Second Preview Modal for ALL file types */}
+      {/* Clean Universal Preview Modal (No artificial countdown timer) */}
       {showPreviewModal && activePreviewItem && (
-        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="30-Second Temporary Preview">
+        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="File Preview">
           <div className="preview-modal">
             <div className="preview-header">
               <h3>
@@ -517,10 +500,8 @@ function DownloadPage() {
                 <span>Preview: {activePreviewItem.fileName}</span>
               </h3>
 
-              {/* 30-Second Countdown Badge */}
-              <div className="preview-timer-badge">
-                <Clock size={16} />
-                <span>{previewSecondsLeft}s remaining</span>
+              <div className="badge badge-primary">
+                <Eye size={14} style={{ marginRight: '0.3rem' }} /> In-Browser Preview
               </div>
 
               <button className="preview-close" onClick={closeAndRevokePreview} aria-label="Close preview">
@@ -528,7 +509,7 @@ function DownloadPage() {
               </button>
             </div>
 
-            {/* Multi-file selector bar if transfer has multiple files */}
+            {/* Multi-file tab selector if transfer has multiple files */}
             {previewBundleFiles.length > 1 && (
               <div className="preview-bundle-bar">
                 {previewBundleFiles.map((f, i) => (
@@ -550,7 +531,7 @@ function DownloadPage() {
                   {mediaLoading && <PreviewMediaSkeleton height="280px" />}
                   <img
                     src={activePreviewItem.content}
-                    alt="30-Second Temporary Preview"
+                    alt="Decrypted Preview"
                     className="preview-image"
                     style={{ display: mediaLoading ? 'none' : 'block' }}
                     onLoad={() => setMediaLoading(false)}
@@ -581,8 +562,8 @@ function DownloadPage() {
               {/* Audio Preview */}
               {activePreviewItem.category === 'audio' && (
                 <div className="preview-audio-wrapper">
-                  <Music size={48} style={{ color: '#10b981', marginBottom: '1rem' }} />
-                  <p style={{ fontWeight: 600, marginBottom: '1rem' }}>{activePreviewItem.fileName}</p>
+                  <Music size={48} style={{ color: 'var(--secondary)', marginBottom: '1rem' }} />
+                  <p style={{ fontWeight: 700, marginBottom: '1rem' }}>{activePreviewItem.fileName}</p>
                   <audio
                     src={activePreviewItem.content}
                     controls
@@ -610,15 +591,15 @@ function DownloadPage() {
                 <pre className="preview-text">{activePreviewItem.content}</pre>
               )}
 
-              {/* Unsupported format / Document metadata info screen */}
+              {/* Unsupported binary */}
               {!activePreviewItem.canPreviewDirectly && (
                 <div className="preview-unsupported-card">
-                  <div className="preview-unsupported-icon">
-                    <FileText size={40} />
+                  <div className="file-icon" style={{ margin: '0 auto 1rem', width: 52, height: 52 }}>
+                    <FileText size={28} />
                   </div>
                   <h4>{activePreviewItem.fileName}</h4>
-                  <p className="preview-unsupported-desc">
-                    This file format ({activePreviewItem.mimeType || 'binary'}) cannot be rendered directly inside the browser viewport.
+                  <p style={{ color: 'var(--fg-muted)', fontSize: '0.9rem', marginTop: '0.4rem' }}>
+                    Binary file ({activePreviewItem.mimeType || 'octet-stream'}). Download to view in your system viewer.
                   </p>
 
                   <div className="preview-meta-table">
@@ -627,16 +608,8 @@ function DownloadPage() {
                       <span className="val">{formatBytes(activePreviewItem.fileSize)}</span>
                     </div>
                     <div className="preview-meta-row">
-                      <span className="label">MIME Type:</span>
-                      <span className="val">{activePreviewItem.mimeType}</span>
-                    </div>
-                    <div className="preview-meta-row">
-                      <span className="label">Encryption:</span>
-                      <span className="val" style={{ color: '#10b981' }}>Verified AES-256-GCM</span>
-                    </div>
-                    <div className="preview-meta-row">
-                      <span className="label">Preview Session:</span>
-                      <span className="val" style={{ color: '#ef4444' }}>Auto-expires in {previewSecondsLeft}s</span>
+                      <span className="label">Security:</span>
+                      <span className="val" style={{ color: 'var(--secondary)' }}>Verified AES-256-GCM</span>
                     </div>
                   </div>
                 </div>
@@ -651,7 +624,7 @@ function DownloadPage() {
                   executeDownload(true);
                 }}
               >
-                <Download size={16} /> Save & Download File
+                <Download size={16} /> Save &amp; Download File
               </button>
               <button className="btn btn-secondary" onClick={closeAndRevokePreview}>
                 Done Viewing
@@ -664,4 +637,4 @@ function DownloadPage() {
   );
 }
 
-export default DownloadPage
+export default DownloadPage;

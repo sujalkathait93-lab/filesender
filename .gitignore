@@ -17,6 +17,7 @@ build/
 # ─── Environment and secrets ───────────────────────────────────
 .env
 .env.*
+!.env.example
 *.env
 
 # ─── Local database & uploads (runtime data) ───────────────────
@@ -27,10 +28,12 @@ database/app.db
 uploads/*
 !uploads/.gitkeep
 
-# ─── IDE & OS ──────────────────────────────────────────────────
+# ─── IDE & Agents ───────────────────────────────────────────────
 .vscode/
 .idea/
 .cursor/
+.agents/
+skills-lock.json
 .DS_Store
 Thumbs.db
 *.swp

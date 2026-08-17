@@ -18,8 +18,8 @@ HEX_STR_RE = re.compile(r"^[0-9a-fA-F]+$")
 IV_HEX_LEN = 24   # 12 bytes
 SALT_HEX_LEN = 32  # 16 bytes
 
-MAX_EXPIRY_HOURS = 720.0
-MIN_EXPIRY_HOURS = 0.25
+MAX_EXPIRY_HOURS = 1.0  # 60 minutes maximum
+MIN_EXPIRY_HOURS = 0.25  # 15 minutes minimum
 
 SHARING_MODES = frozenset({"standard", "steganography", "burn_on_read", "both"})
 
@@ -83,7 +83,7 @@ def validate_upload_form(form: dict) -> dict:
         "max_downloads": _to_int(form.get("max_downloads"), 10, 0, 100, "max_downloads"),
         "burn_on_read": _to_int(form.get("burn_on_read"), 0, 0, 1, "burn_on_read"),
         "expiry_hours": _to_float(
-            form.get("expiry_hours"), 24.0, MIN_EXPIRY_HOURS, MAX_EXPIRY_HOURS, "expiry_hours"
+            form.get("expiry_hours"), 1.0, MIN_EXPIRY_HOURS, MAX_EXPIRY_HOURS, "expiry_hours"
         ),
         "sharing_mode": sharing_mode,
         "transfer_id": transfer_id,

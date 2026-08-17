@@ -8,6 +8,7 @@ Responsibilities:
 - Registers REST routes and Socket.IO signaling handlers.
 """
 
+import logging
 import os
 import sys
 import threading
@@ -25,8 +26,10 @@ from flask_socketio import SocketIO
 from api.config import (
     SECRET_KEY, DB_PATH, UPLOAD_DIR, DEFAULT_PORT,
     CORS_EXPOSE_HEADERS, MAX_FILE_SIZE, CLEANUP_INTERVAL_SECONDS,
-    FRONTEND_ORIGIN
+    FRONTEND_ORIGIN, is_vercel
 )
+
+logger = logging.getLogger("fileshare.app")
 from api.database import DatabaseManager
 from api.storage import StorageManager
 from api.errors import ApiError
@@ -128,16 +131,35 @@ def create_app():
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
         )
+        # CSP: allow the SPA to load its own scripts/styles/images and connect to the API
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' wss: ws:; "
+            "frame-ancestors 'none'; "
+            "base-uri 'none'"
+        )
+        # HSTS: enforce HTTPS (Vercel always terminates TLS)
+        if is_vercel:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=63072000; includeSubDomains; preload"
+            )
         return response
 
     # Centralized error handling
     _register_error_handlers(app)
 
-    # Persistent background cleanup (single thread, not per-request)
-    _start_cleanup_thread(cleanup_service)
+    # Persistent background cleanup — skip on Vercel (serverless has no persistent threads)
+    if not is_vercel:
+        _start_cleanup_thread(cleanup_service)
+    else:
+        logger.info("Vercel detected — skipping cleanup thread (serverless)")
 
     return app, socketio
 
@@ -145,5 +167,5 @@ def create_app():
 app, socketio = create_app()
 
 if __name__ == "__main__":
-    print(f"Starting FileShare Flask + SocketIO Server on port {DEFAULT_PORT}...")
-    socketio.run(app, host="0.0.0.0", port=DEFAULT_PORT, debug=False, allow_unsafe_werkzeug=True)
+    logger.info("Starting FileShare Flask + SocketIO Server on port %s", DEFAULT_PORT)
+    socketio.run(app, host="0.0.0.0", port=DEFAULT_PORT, debug=False)

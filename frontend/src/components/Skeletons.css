@@ -1,17 +1,18 @@
-/* High-Performance Shimmer & Skeleton Animations */
+/* ─── Flat Design Skeletons & Progress Loaders ───────────────────────────── */
 
 .skeleton-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(255, 255, 255, 0.03) 100%
+    #F3F4F6 0%,
+    #E5E7EB 50%,
+    #F3F4F6 100%
   );
   background-size: 200% 100%;
-  animation: shimmerAnimation 1.6s ease-in-out infinite;
+  animation: shimmerAnimation 1.5s ease-in-out infinite;
   will-change: background-position;
   position: relative;
   overflow: hidden;
+  border-radius: 6px;
 }
 
 @keyframes shimmerAnimation {
@@ -24,15 +25,15 @@
 }
 
 .file-info-skeleton {
-  border: 1px dashed var(--border-default) !important;
-  background: rgba(255, 255, 255, 0.02) !important;
+  border: 2px solid var(--border) !important;
+  background-color: var(--bg-subtle) !important;
   pointer-events: none;
 }
 
 .skeleton-icon {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: 8px;
   flex-shrink: 0;
   margin-right: 1rem;
 }
@@ -40,12 +41,12 @@
 .preview-media-skeleton {
   position: relative;
   width: 100%;
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-base);
+  background-color: var(--bg-muted);
 }
 
 .preview-spinner-overlay {
@@ -57,7 +58,8 @@
   justify-content: center;
   gap: 0.75rem;
   font-size: 0.85rem;
-  color: var(--foreground-muted);
+  font-weight: 600;
+  color: var(--fg-muted);
 }
 
 /* Indeterminate Progress Bar Animation */
@@ -65,12 +67,12 @@
   width: 100% !important;
   background: linear-gradient(
     90deg,
-    var(--accent-dim) 0%,
-    var(--accent) 50%,
-    var(--accent-dim) 100%
+    var(--primary-tint) 0%,
+    var(--primary) 50%,
+    var(--primary-tint) 100%
   ) !important;
   background-size: 200% 100% !important;
-  animation: indeterminateBar 1.4s infinite linear !important;
+  animation: indeterminateBar 1.2s infinite linear !important;
   will-change: background-position;
 }
 
@@ -102,6 +104,6 @@
   .indeterminate-fill,
   .pulse-text {
     animation: none !important;
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: #F3F4F6 !important;
   }
 }

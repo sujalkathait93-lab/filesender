@@ -3,8 +3,18 @@ FileShare Configuration
 Centralizes all configuration constants, environment detection, and path resolution.
 """
 
+import logging
 import os
 import secrets
+
+# ─── Logging ────────────────────────────────────────────────────────────────
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger("fileshare")
 
 # Environment detection
 is_vercel = os.environ.get("VERCEL") == "1" or os.environ.get("VERCEL_ENV") is not None
@@ -20,20 +30,22 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", default_upload)
 _env_secret = os.environ.get("SECRET_KEY")
 if _env_secret:
     SECRET_KEY = _env_secret
-elif is_vercel:
-    # Production should set SECRET_KEY. Ephemeral fallback avoids a hard crash
-    # if the env var is missing on a serverless instance.
-    SECRET_KEY = secrets.token_hex(32)
 else:
     SECRET_KEY = secrets.token_hex(32)
+    if is_vercel:
+        logger.warning(
+            "SECRET_KEY is not set — using an auto-generated ephemeral key. "
+            "Set SECRET_KEY in Vercel Environment Variables for stable sessions."
+        )
 
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "*")
 TRUST_PROXY = os.environ.get("TRUST_PROXY", "0") == "1" or is_vercel
 
+
 # Transfer limits
 MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024))  # 2GB Max Total Size
 MAX_REFRESHES_PER_SESSION = 5
-MAX_PREVIEWS_PER_FILE = int(os.environ.get("MAX_PREVIEWS_PER_FILE", 20))
+MAX_PREVIEWS_PER_FILE = int(os.environ.get("MAX_PREVIEWS_PER_FILE", 100))
 
 # Background cleanup
 CLEANUP_INTERVAL_SECONDS = int(os.environ.get("CLEANUP_INTERVAL_SECONDS", 300))  # 5 min

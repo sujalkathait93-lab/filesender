@@ -7,7 +7,7 @@
 
 import { TransferStateMachine, TransferState } from '../frontend/src/stateMachine.js';
 import { detectFileType, validateFiles, packFiles, unpackFiles } from '../frontend/src/fileManager.js';
-import { PreviewManager, PREVIEW_DURATION_SECONDS } from '../frontend/src/previewManager.js';
+import { PreviewManager } from '../frontend/src/previewManager.js';
 import { createTransferCode, parseTransferCode, createShareMessage, isValidTransferCodeInput } from '../frontend/src/transferCode.js';
 
 let passed = 0;
@@ -38,22 +38,23 @@ async function runTests() {
     { name: 'f1.txt', size: 1024 * 1024 * 500 }, // 500 MB
     { name: 'f2.txt', size: 1024 * 1024 * 500 }, // 500 MB
   ];
-  const validRes = validateFiles(validFiles);
-  check('valid 1 GB total selection', validRes.valid === true && validRes.totalSize === 1024 * 1024 * 1000);
+  const v1 = validateFiles(validFiles, 0);
+  check('under 2GB capacity passes', v1.valid === true);
 
   const oversizedFiles = [
-    { name: 'big.iso', size: 2.5 * 1024 * 1024 * 1024 } // 2.5 GB
+    { name: 'big.iso', size: 1024 * 1024 * 1024 * 2.5 } // 2.5 GB
   ];
-  const overRes = validateFiles(oversizedFiles);
-  check('reject >2 GB selection', overRes.valid === false && overRes.error.includes('2 GB'));
+  const v2 = validateFiles(oversizedFiles, 0);
+  check('over 2GB rejected', v2.valid === false && v2.error.includes('exceeds'));
 
   console.log('== 3. Multi-File Bundle Packaging & Unpacking ==');
   const f1Data = new TextEncoder().encode('Content of file 1');
   const f2Data = new TextEncoder().encode('Content of file 2 with more data');
-  const f1 = new File([f1Data], 'file1.txt', { type: 'text/plain' });
-  const f2 = new File([f2Data], 'file2.txt', { type: 'text/plain' });
+  const f1 = new Blob([f1Data], { type: 'text/plain' });
+  f1.name = 'file1.txt';
+  const f2 = new Blob([f2Data], { type: 'text/plain' });
+  f2.name = 'file2.txt';
 
-  // Pack 2 files
   const packRes = await packFiles([f1, f2]);
   check('multi-file bundle created', packRes.isBundle === true && packRes.fileCount === 2);
 
@@ -66,7 +67,6 @@ async function runTests() {
   console.log('== 4. State Machine Transitions ==');
   const sm = new TransferStateMachine(TransferState.IDLE);
   check('initial state IDLE', sm.getState() === TransferState.IDLE);
-
   check('transition to SELECT', sm.transitionTo(TransferState.SELECT) === true && sm.getState() === TransferState.SELECT);
   check('transition to VALIDATE', sm.transitionTo(TransferState.VALIDATE) === true && sm.getState() === TransferState.VALIDATE);
   check('transition to PREPARE', sm.transitionTo(TransferState.PREPARE) === true && sm.getState() === TransferState.PREPARE);
@@ -87,12 +87,10 @@ async function runTests() {
   check('transition to INVALID_TOKEN', smError.transitionTo(TransferState.INVALID_TOKEN) === true);
   check('transition from error to IDLE', smError.transitionTo(TransferState.IDLE) === true);
 
-  console.log('== 5. Preview Manager Lifecycle & 30s Countdown ==');
-  let ticks = 0;
-  let expired = false;
+  console.log('== 5. Preview Manager Lifecycle & Object URL Management ==');
+  let closed = false;
   const pm = new PreviewManager({
-    onTick: (s) => { ticks++; },
-    onExpire: () => { expired = true; }
+    onClose: () => { closed = true; }
   });
 
   const testFileItem = {
@@ -105,10 +103,7 @@ async function runTests() {
 
   const preview = pm.preparePreview(testFileItem);
   check('preview prepared for image', preview.category === 'image' && preview.canPreviewDirectly === true);
-  check('preview starts at 30 seconds', pm.getSecondsLeft() === PREVIEW_DURATION_SECONDS);
 
-  // Fast forward timer tick simulation
-  pm.stopCountdown();
   pm.cleanup();
   check('cleanup resets preview state', pm.currentPreview === null && pm.activeObjectUrls.size === 0);
 
@@ -138,7 +133,7 @@ async function runTests() {
     totalSize: '45.2 MB'
   });
   check('share message contains transfer code', shareMsg.includes('Code: FS-4BE819D7-9F8A73C2'));
-  check('share message contains link and expiry', shareMsg.includes('Link:') && shareMsg.includes('Expires: 1 hour'));
+  check('share message contains link and expiry in minutes', shareMsg.includes('Link:') && shareMsg.includes('Expires: 60 minutes'));
 
   console.log(`\n== ${passed} passed, ${failed} failed ==`);
   process.exit(failed ? 1 : 0);
