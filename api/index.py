@@ -19,14 +19,14 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 # pyrefly: ignore [missing-import]
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from api.config import (
-    SECRET_KEY, DB_PATH, UPLOAD_DIR, DEFAULT_PORT,
+    SECRET_KEY, DB_PATH, UPLOAD_DIR, DEFAULT_PORT, HOST,
     CORS_EXPOSE_HEADERS, MAX_FILE_SIZE, CLEANUP_INTERVAL_SECONDS,
-    FRONTEND_ORIGIN, is_vercel
+    FRONTEND_ORIGIN, CORS_ORIGINS, IS_PRODUCTION, is_vercel
 )
 
 logger = logging.getLogger("fileshare.app")
@@ -41,7 +41,7 @@ from api.routes.signaling import register_signaling_handlers
 
 
 def _register_error_handlers(app):
-    """Centralized JSON error handling for the whole app."""
+    """Centralized JSON error handling for the whole app with SPA fallback."""
 
     @app.errorhandler(ApiError)
     def handle_api_error(err: ApiError):
@@ -53,6 +53,15 @@ def _register_error_handlers(app):
 
     @app.errorhandler(404)
     def handle_not_found(_):
+        dist_dir = os.path.join(_PROJECT_ROOT, "frontend", "dist")
+        if os.path.isdir(dist_dir) and not request.path.startswith("/api"):
+            rel_path = request.path.lstrip("/")
+            target = os.path.join(dist_dir, rel_path)
+            if rel_path and os.path.isfile(target):
+                return send_from_directory(dist_dir, rel_path)
+            index_path = os.path.join(dist_dir, "index.html")
+            if os.path.isfile(index_path):
+                return send_from_directory(dist_dir, "index.html")
         return jsonify({"detail": "Endpoint not found"}), 404
 
     @app.errorhandler(405)
@@ -90,8 +99,8 @@ def create_app():
     app.config['SECRET_KEY'] = SECRET_KEY
     app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE + 1024 * 1024  # 2 GB + multipart overhead
 
-    cors_origins = FRONTEND_ORIGIN if FRONTEND_ORIGIN != "*" else "*"
-    allow_credentials = FRONTEND_ORIGIN != "*"
+    cors_origins = CORS_ORIGINS
+    allow_credentials = CORS_ORIGINS != "*"
     CORS(
         app,
         resources={r"/*": {"origins": cors_origins}},
@@ -167,5 +176,5 @@ def create_app():
 app, socketio = create_app()
 
 if __name__ == "__main__":
-    logger.info("Starting FileShare Flask + SocketIO Server on port %s", DEFAULT_PORT)
-    socketio.run(app, host="0.0.0.0", port=DEFAULT_PORT, debug=False)
+    logger.info("Starting FileShare Flask + SocketIO Server on %s:%s", HOST, DEFAULT_PORT)
+    socketio.run(app, host=HOST, port=DEFAULT_PORT, debug=not IS_PRODUCTION)

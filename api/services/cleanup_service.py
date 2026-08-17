@@ -11,12 +11,10 @@ Performance notes:
 
 import os
 import time
+from api.config import ORPHAN_GRACE_PERIOD_SECONDS
 from api.database import DatabaseManager
 from api.storage import StorageManager
 from api.utils import get_utc_now_iso
-
-# In-flight upload grace period (seconds)
-ORPHAN_GRACE_PERIOD_SECONDS = 300
 
 
 class CleanupService:

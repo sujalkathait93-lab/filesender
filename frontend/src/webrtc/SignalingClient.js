@@ -5,9 +5,17 @@
 
 import { io } from 'socket.io-client';
 
+const defaultSignalingUrl = (() => {
+  const envUrl = (typeof import.meta !== 'undefined' && import.meta.env && (import.meta.env.VITE_SIGNALING_URL || import.meta.env.VITE_API_URL))
+    ? String(import.meta.env.VITE_SIGNALING_URL || import.meta.env.VITE_API_URL).trim()
+    : '';
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  return typeof window !== 'undefined' ? window.location.origin : '';
+})();
+
 export class SignalingClient {
   constructor(serverUrl, roomCode, role) {
-    this.serverUrl = serverUrl || window.location.origin;
+    this.serverUrl = (serverUrl ? String(serverUrl).trim().replace(/\/+$/, '') : '') || defaultSignalingUrl;
     this.roomCode = roomCode;
     this.role = role;
     this.socket = null;

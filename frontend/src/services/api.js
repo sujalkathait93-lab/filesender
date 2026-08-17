@@ -4,7 +4,8 @@
  * call fetch() directly. Keeps error handling and endpoint URLs in one place.
  */
 
-const API_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) || window.location.origin;
+const rawApiUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) ? String(import.meta.env.VITE_API_URL).trim() : '';
+const API_URL = rawApiUrl ? rawApiUrl.replace(/\/+$/, '') : (typeof window !== 'undefined' ? window.location.origin : '');
 
 /** Parse a JSON response; throw a readable Error on failure. */
 async function parseResponse(response) {
