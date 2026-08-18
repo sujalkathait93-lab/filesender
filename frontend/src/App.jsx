@@ -18,6 +18,13 @@ const DownloadPage = lazy(() => import('./pages/Download'))
 function App() {
   const [serverOnline, setServerOnline] = useState(null);
   const [ephemeralStorage, setEphemeralStorage] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('fileshare_banner_dismissed') === '1';
+    } catch (_) {
+      return false;
+    }
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
@@ -43,19 +50,20 @@ function App() {
   const detectServer = async () => {
     try {
       const health = await api.health();
-      // #region agent log
-      fetch('http://127.0.0.1:7888/ingest/1f5ec640-be76-4d04-a0a8-cbf3824fea44',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'525afc'},body:JSON.stringify({sessionId:'525afc',hypothesisId:'A',location:'App.jsx:detectServer',message:'health ok',data:{status:health?.status,persistent:health?.persistent_storage,origin:window.location.origin},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
-      // #endregion
       if (!health || health.status !== 'healthy') throw new Error('Health check failed');
       setServerOnline(true);
       setEphemeralStorage(health.persistent_storage === false);
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7888/ingest/1f5ec640-be76-4d04-a0a8-cbf3824fea44',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'525afc'},body:JSON.stringify({sessionId:'525afc',hypothesisId:'A',location:'App.jsx:detectServer',message:'health failed',data:{error:String(err?.message||err),origin:window.location.origin},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
-      // #endregion
       setServerOnline(false);
       setEphemeralStorage(false);
     }
+  };
+
+  const handleDismissBanner = () => {
+    setBannerDismissed(true);
+    try {
+      sessionStorage.setItem('fileshare_banner_dismissed', '1');
+    } catch (_) {}
   };
 
   const navLinkClass = (path) => location.pathname === path ? 'active' : '';
@@ -149,10 +157,19 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        {ephemeralStorage && (
-          <div className="ephemeral-banner" role="status">
-            <AlertTriangle size={18} />
-            <span>This host uses temporary serverless storage. Files clear after instance recycling.</span>
+        {ephemeralStorage && !bannerDismissed && (
+          <div className="ephemeral-banner animate-in" role="status">
+            <div className="ephemeral-banner-content">
+              <AlertTriangle size={18} className="ephemeral-banner-icon" />
+              <span>This host uses temporary serverless storage. Files clear after instance recycling.</span>
+            </div>
+            <button
+              className="ephemeral-banner-dismiss"
+              onClick={handleDismissBanner}
+              aria-label="Dismiss banner"
+            >
+              <X size={16} />
+            </button>
           </div>
         )}
         <Suspense fallback={<PageSkeletonLoader />}>
@@ -205,8 +222,26 @@ function HomePage() {
         <p className="subtitle">
           Your files are locked directly in your browser with AES-256-GCM before uploading.
           Only the person with your transfer code can unlock and open them.
-          Codes expire securely within up to 60 minutes.
         </p>
+
+        <div className="hero-points-list">
+          <div className="hero-point-item">
+            <CheckCircle2 size={16} className="text-emerald" />
+            <span><strong>Zero-Knowledge:</strong> Encrypted in browser before upload</span>
+          </div>
+          <div className="hero-point-item">
+            <CheckCircle2 size={16} className="text-blue" />
+            <span><strong>Device Keys:</strong> Decryption key never touches the server</span>
+          </div>
+          <div className="hero-point-item">
+            <Clock size={16} className="text-amber" />
+            <span><strong>Auto-Expire:</strong> Self-destructs within 60 mins or on first read</span>
+          </div>
+          <div className="hero-point-item">
+            <Sparkles size={16} className="text-slate" />
+            <span><strong>Zero Friction:</strong> No accounts, logins, or trackers</span>
+          </div>
+        </div>
 
         <div className="cta-buttons">
           <Link to="/upload" className="btn btn-primary btn-lg">
@@ -221,7 +256,7 @@ function HomePage() {
         <div className="highlights-bar">
           <div className="highlight-item">
             <CheckCircle2 size={16} className="text-emerald" />
-            <span>Encrypted in Browser</span>
+            <span>256 KB Slicing &amp; 2 MB Batches</span>
           </div>
           <div className="highlight-item">
             <CheckCircle2 size={16} className="text-blue" />
@@ -229,12 +264,12 @@ function HomePage() {
           </div>
           <div className="highlight-item">
             <Clock size={16} className="text-amber" />
-            <span>Expiry Up to 60 Minutes</span>
+            <span>Direct-to-Disk Streaming</span>
           </div>
         </div>
       </section>
 
-      {/* How it works - 3 clear steps with exactly ~10 words each */}
+      {/* How it works - 3 clear steps */}
       <section className="how-it-works-section">
         <div className="section-header">
           <span className="section-tag">SIMPLE WORKFLOW</span>
@@ -248,10 +283,12 @@ function HomePage() {
             <div className="step-icon-circle bg-blue-tint text-blue">
               <MousePointerClick size={24} />
             </div>
-            <h3 className="step-title">Choose Files</h3>
-            <p className="step-desc">
-              Select and drop your files. Choose optional self-destruct limits.
-            </p>
+            <h3 className="step-title">1. Choose Files</h3>
+            <ul className="step-points-list">
+              <li>Select &amp; drop files (up to 2 GB)</li>
+              <li>Set self-destruct &amp; expiry timers</li>
+              <li>Streamed in 256 KB memory-safe chunks</li>
+            </ul>
           </div>
 
           <div className="step-card">
@@ -259,10 +296,12 @@ function HomePage() {
             <div className="step-icon-circle bg-emerald-tint text-emerald">
               <Key size={24} />
             </div>
-            <h3 className="step-title">Get Transfer Code</h3>
-            <p className="step-desc">
-              Browser encrypts data and creates a secure transfer code.
-            </p>
+            <h3 className="step-title">2. Get Transfer Code</h3>
+            <ul className="step-points-list">
+              <li>Browser encrypts via AES-256-GCM</li>
+              <li>One-click 6-digit code &amp; QR link</li>
+              <li>Server only receives ciphertext blobs</li>
+            </ul>
           </div>
 
           <div className="step-card">
@@ -270,15 +309,17 @@ function HomePage() {
             <div className="step-icon-circle bg-amber-tint text-amber">
               <Download size={24} />
             </div>
-            <h3 className="step-title">Download &amp; Decrypt</h3>
-            <p className="step-desc">
-              Share code with receiver to decrypt and download files.
-            </p>
+            <h3 className="step-title">3. Download &amp; Decrypt</h3>
+            <ul className="step-points-list">
+              <li>Receiver inputs code / scans QR</li>
+              <li>Streams decrypted batches directly to disk</li>
+              <li>In-browser preview for media &amp; docs</li>
+            </ul>
           </div>
         </div>
       </section>
 
-      {/* Feature cards - Square boxes with ~30 words explanation each */}
+      {/* Feature cards - 4 Core Security Pillars */}
       <section className="features-section">
         <div className="section-header">
           <span className="section-tag">CORE SECURITY</span>
@@ -296,9 +337,12 @@ function HomePage() {
               <span className="feature-badge badge-blue">PURE PRIVACY</span>
             </div>
             <h3 className="feature-title">Browser-Only Encryption</h3>
-            <p className="feature-desc">
-              Files are encrypted locally using AES-256-GCM before uploading. Your secret encryption key stays on your device and never touches our servers, ensuring complete zero-knowledge data privacy.
-            </p>
+            <ul className="feature-points-list">
+              <li>AES-256-GCM military-grade cipher</li>
+              <li>Hardware-accelerated Web Crypto API</li>
+              <li>Key never leaves device (URL #hash)</li>
+              <li>Server stores zero plaintext data</li>
+            </ul>
           </div>
 
           {/* Box 2: Emerald */}
@@ -310,9 +354,12 @@ function HomePage() {
               <span className="feature-badge badge-emerald">IMAGE VAULT</span>
             </div>
             <h3 className="feature-title">Steganography Vault</h3>
-            <p className="feature-desc">
-              Hide encrypted files inside normal image pixels. To anyone inspecting network traffic, your transfer looks like an innocent picture, preventing inspection and bypassing strict corporate firewalls effortlessly.
-            </p>
+            <ul className="feature-points-list">
+              <li>Invisible LSB pixel injection in PNGs</li>
+              <li>Hides encrypted files inside normal images</li>
+              <li>Bypasses network traffic inspection</li>
+              <li>Secret extraction with master password</li>
+            </ul>
           </div>
 
           {/* Box 3: Amber */}
@@ -324,9 +371,12 @@ function HomePage() {
               <span className="feature-badge badge-amber">SELF-DESTRUCT</span>
             </div>
             <h3 className="feature-title">Burn-On-Read &amp; Expiry</h3>
-            <p className="feature-desc">
-              Protect sensitive data with automatic file deletion immediately after first download or when the timer expires. Blobs and database records are instantly wiped clean from the server forever.
-            </p>
+            <ul className="feature-points-list">
+              <li>Instant file purge on first download</li>
+              <li>Configurable 60-minute TTL expiry</li>
+              <li>Automated background cleanup worker</li>
+              <li>Zero leftover residue on server disk</li>
+            </ul>
           </div>
 
           {/* Box 4: Slate/Purple */}
@@ -338,9 +388,12 @@ function HomePage() {
               <span className="feature-badge badge-slate">INSTANT ACCESS</span>
             </div>
             <h3 className="feature-title">One-Code Instant Share</h3>
-            <p className="feature-desc">
-              Transfer files directly using a single share code or QR code. No logins, signups, or accounts are required. Recipients simply enter the code to decrypt their files immediately.
-            </p>
+            <ul className="feature-points-list">
+              <li>Zero friction across mobile &amp; desktop</li>
+              <li>5x QR token refresh security limit</li>
+              <li>SHA-256 cryptographic access proof</li>
+              <li>No logins, sign-ups, or personal data</li>
+            </ul>
           </div>
         </div>
       </section>

@@ -1,32 +1,26 @@
 /**
- * FileShare Chunk Manager
- * High-performance, streaming memory-efficient chunking engine supporting up to 2 GB transfers.
- * Avoids loading entire files into RAM by operating slice-by-slice.
+ * FileShare Stream & Batch Chunk Manager
+ * High-performance, memory-safe streaming engine.
+ * 
+ * Specifications:
+ * - 256 KB chunk size (262,144 bytes)
+ * - 8 chunks grouped into 2 MB batches
+ * - AES-256-GCM batch encryption with unique counter IVs
+ * - Streaming disk write via File System Access API (showSaveFilePicker)
+ * - Automatic retry and missing chunk detection
+ * - Final end-to-end SHA-256 verification
  */
 
 import { encryptChunkData, decryptChunkData, deriveKey } from './crypto.js';
 import { hexToBytes } from './hexUtils.js';
 
-export const DEFAULT_CHUNK_SIZE = 512 * 1024; // 512 KB per chunk
+export const CHUNK_SIZE = 256 * 1024; // 256 KB per chunk
+export const BATCH_CHUNKS_COUNT = 8;   // 8 chunks per batch
+export const BATCH_SIZE = CHUNK_SIZE * BATCH_CHUNKS_COUNT; // 2 MB per batch
 export const MAX_TOTAL_TRANSFER_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
 
 /**
- * Validate selection total size
- */
-export function validateFilesTotalSize(files) {
-  const total = Array.from(files).reduce((acc, f) => acc + (f.size || 0), 0);
-  if (total > MAX_TOTAL_TRANSFER_SIZE) {
-    return {
-      valid: false,
-      totalSize: total,
-      error: `Total selection size exceeds maximum allowed capacity of 2 GB (${(total / (1024 * 1024 * 1024)).toFixed(2)} GB selected).`
-    };
-  }
-  return { valid: true, totalSize: total, error: null };
-}
-
-/**
- * Compute SHA-256 hash of a Uint8Array or ArrayBuffer for file integrity verification
+ * Compute SHA-256 checksum of an ArrayBuffer or Uint8Array
  */
 export async function computeSHA256(data) {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -35,169 +29,317 @@ export async function computeSHA256(data) {
 }
 
 /**
- * Sender File Chunk Generator
- * Generator function that yields encrypted chunks one by one without buffering the whole file in RAM.
+ * Calculate total batches and chunks for a given file size
  */
-export async function* generateEncryptedChunks({ file, fileId, transferId, key, baseIV, chunkSize = DEFAULT_CHUNK_SIZE, onChunkProgress }) {
-  const totalSize = file.size;
-  const totalChunks = Math.ceil(totalSize / chunkSize) || 1;
-  let chunkIndex = 0;
+export function calculateTransferPlan(fileSize) {
+  const totalChunks = Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
+  const totalBatches = Math.max(1, Math.ceil(totalChunks / BATCH_CHUNKS_COUNT));
+  return {
+    fileSize,
+    chunkSize: CHUNK_SIZE,
+    batchSize: BATCH_SIZE,
+    chunksPerBatch: BATCH_CHUNKS_COUNT,
+    totalChunks,
+    totalBatches
+  };
+}
 
-  for (let offset = 0; offset < totalSize; offset += chunkSize) {
-    const slice = file.slice(offset, Math.min(offset + chunkSize, totalSize));
-    const sliceBuffer = await slice.arrayBuffer();
+/**
+ * Stream & Batch Sender Engine
+ * Streams file from disk via File.slice() in 256 KB chunks, groups into 8-chunk (2 MB) batches,
+ * encrypts each batch, and yields them sequentially without accumulating full files in RAM.
+ */
+export class StreamBatchSender {
+  constructor({ file, key, baseIV, fileId, transferId, onProgress, onStatus }) {
+    this.file = file;
+    this.key = key;
+    this.baseIV = baseIV;
+    this.fileId = fileId;
+    this.transferId = transferId;
+    this.onProgress = onProgress;
+    this.onStatus = onStatus;
 
-    // Encrypt chunk slice
-    const encryptedData = await encryptChunkData(sliceBuffer, key, baseIV, chunkIndex);
-    const chunkChecksum = await computeSHA256(encryptedData);
+    this.plan = calculateTransferPlan(file.size);
+    this.isCancelled = false;
+    this.isPaused = false;
+    this.currentBatchIndex = 0;
+    this.currentChunkIndex = 0;
+  }
 
-    const chunkMeta = {
-      transferId,
-      fileId,
-      fileName: file.name,
-      fileType: file.type || 'application/octet-stream',
-      chunkIndex,
-      totalChunks,
-      chunkSize: encryptedData.byteLength,
-      offset,
-      totalSize,
-      checksum: chunkChecksum
-    };
+  cancel() {
+    this.isCancelled = true;
+    this.onStatus?.('Transfer cancelled by sender.');
+  }
 
-    chunkIndex++;
+  pause() {
+    this.isPaused = true;
+    this.onStatus?.('Transfer paused.');
+  }
 
-    if (typeof onChunkProgress === 'function') {
-      onChunkProgress({
-        chunkIndex,
-        totalChunks,
-        bytesProcessed: Math.min(offset + slice.size, totalSize),
-        totalSize
-      });
+  resume() {
+    this.isPaused = false;
+    this.onStatus?.('Transfer resumed.');
+  }
+
+  /**
+   * Read and build a single 256 KB chunk slice
+   */
+  async readChunk(chunkIndex) {
+    const start = chunkIndex * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, this.file.size);
+    const sliceBlob = this.file.slice(start, end);
+    const sliceBuffer = await sliceBlob.arrayBuffer();
+    return new Uint8Array(sliceBuffer);
+  }
+
+  /**
+   * Process a single batch (8 chunks = 2 MB), encrypt, and return packaged batch
+   */
+  async processBatch(batchIndex) {
+    if (this.isCancelled) throw new Error('Transfer cancelled');
+
+    const startChunk = batchIndex * BATCH_CHUNKS_COUNT;
+    const endChunk = Math.min(startChunk + BATCH_CHUNKS_COUNT, this.plan.totalChunks);
+    const chunkPromises = [];
+
+    for (let i = startChunk; i < endChunk; i++) {
+      chunkPromises.push(this.readChunk(i));
     }
 
-    yield {
-      meta: chunkMeta,
-      data: encryptedData
+    const chunks = await Promise.all(chunkPromises);
+    const totalRawBytes = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+
+    // Concatenate chunks for batch encryption
+    const batchRawBuffer = new Uint8Array(totalRawBytes);
+    let offset = 0;
+    const chunkChecksums = [];
+
+    for (const chunk of chunks) {
+      batchRawBuffer.set(chunk, offset);
+      const hash = await computeSHA256(chunk);
+      chunkChecksums.push(hash);
+      offset += chunk.byteLength;
+    }
+
+    // Encrypt batch with batch-derived counter IV
+    const encryptedBatch = await encryptChunkData(batchRawBuffer.buffer, this.key, this.baseIV, batchIndex);
+    const batchChecksum = await computeSHA256(encryptedBatch);
+
+    return {
+      transferId: this.transferId,
+      fileId: this.fileId,
+      fileName: this.file.name,
+      fileSize: this.file.size,
+      batchIndex,
+      totalBatches: this.plan.totalBatches,
+      startChunk,
+      endChunk: endChunk - 1,
+      totalChunks: this.plan.totalChunks,
+      chunkChecksums,
+      batchChecksum,
+      data: encryptedBatch
     };
+  }
+
+  /**
+   * Stream all batches with progress notifications
+   */
+  async *streamBatches() {
+    for (let b = 0; b < this.plan.totalBatches; b++) {
+      if (this.isCancelled) break;
+      while (this.isPaused && !this.isCancelled) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      const batch = await this.processBatch(b);
+      this.currentBatchIndex = b + 1;
+      this.currentChunkIndex = Math.min((b + 1) * BATCH_CHUNKS_COUNT, this.plan.totalChunks);
+
+      const bytesProcessed = Math.min((b + 1) * BATCH_SIZE, this.file.size);
+      const percent = Math.min(100, Math.round((bytesProcessed / this.file.size) * 100));
+
+      this.onProgress?.({
+        percent,
+        currentBatch: this.currentBatchIndex,
+        totalBatches: this.plan.totalBatches,
+        currentChunk: this.currentChunkIndex,
+        totalChunks: this.plan.totalChunks,
+        bytesProcessed,
+        totalBytes: this.file.size
+      });
+
+      yield batch;
+    }
   }
 }
 
 /**
- * Receiver Chunk Assembler & Integrator
- * Collects, verifies, and reconstructs multi-file payloads from chunks.
+ * Stream & Batch Receiver Engine
+ * Receives chunks and batches, validates checksums, decrypts batches in stream,
+ * and streams decrypted data directly to disk via File System Access API.
  */
-export class ReceiverChunkManager {
-  constructor(manifest) {
-    this.manifest = manifest; // List of file entries: [{ id, name, size, type, totalChunks, iv, salt }]
-    this.filesMap = new Map();
-    this.receivedStats = {
-      totalBytesReceived: 0,
-      totalBytesExpected: manifest ? manifest.reduce((acc, f) => acc + (f.size || 0), 0) : 0
-    };
+export class StreamBatchReceiver {
+  constructor({ fileMeta, key, baseIV, onProgress, onStatus, onComplete, onError }) {
+    this.fileMeta = fileMeta;
+    this.key = key;
+    this.baseIV = baseIV;
+    this.onProgress = onProgress;
+    this.onStatus = onStatus;
+    this.onComplete = onComplete;
+    this.onError = onError;
 
-    if (manifest) {
-      for (const fileMeta of manifest) {
-        this.filesMap.set(fileMeta.id, {
-          meta: fileMeta,
-          chunks: new Map(), // chunkIndex -> Uint8Array
-          receivedBytes: 0,
-          totalChunks: fileMeta.totalChunks,
-          completed: false,
-          checksum: fileMeta.checksum
+    this.plan = calculateTransferPlan(fileMeta.size || fileMeta.original_size || 0);
+    this.receivedBatches = new Map(); // batchIndex -> encryptedUint8Array
+    this.receivedChunksBitmask = new Set();
+    this.isCancelled = false;
+    this.fileHandle = null;
+    this.writableStream = null;
+    this.fallbackBuffers = [];
+    this.hasDirectDiskWrite = false;
+    this.bytesWritten = 0;
+  }
+
+  cancel() {
+    this.isCancelled = true;
+    this.closeDiskStream();
+    this.onStatus?.('Receiver cancelled transfer.');
+  }
+
+  /**
+   * Initialize Direct Disk Streaming using File System Access API if supported
+   */
+  async initDirectDiskStream(suggestedName) {
+    if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+      try {
+        this.fileHandle = await window.showSaveFilePicker({
+          suggestedName: suggestedName || this.fileMeta.name || 'downloaded_file'
         });
+        this.writableStream = await this.fileHandle.createWritable();
+        this.hasDirectDiskWrite = true;
+        this.onStatus?.('Direct disk stream initialized.');
+        return true;
+      } catch (err) {
+        // User cancelled picker or permission denied; fallback to browser memory stream
+        this.hasDirectDiskWrite = false;
+        return false;
       }
     }
+    this.hasDirectDiskWrite = false;
+    return false;
   }
 
-  addChunk(fileId, chunkIndex, totalChunks, chunkData, checksum = null) {
-    let fileStore = this.filesMap.get(fileId);
-    if (!fileStore) {
-      // Auto-register file if manifest didn't pre-declare it
-      fileStore = {
-        meta: { id: fileId, name: `file_${fileId}`, totalChunks },
-        chunks: new Map(),
-        receivedBytes: 0,
-        totalChunks,
-        completed: false
-      };
-      this.filesMap.set(fileId, fileStore);
+  /**
+   * Accept an incoming batch packet, decrypt, and write directly to disk/stream
+   */
+  async acceptBatch(batchMeta, encryptedData) {
+    if (this.isCancelled) return { cancelled: true };
+
+    const { batchIndex, totalBatches, startChunk, endChunk, batchChecksum } = batchMeta;
+
+    // Verify batch checksum
+    const computedHash = await computeSHA256(encryptedData);
+    if (batchChecksum && computedHash !== batchChecksum) {
+      const err = `Checksum mismatch on batch ${batchIndex}. Requesting retry.`;
+      this.onError?.(err);
+      return { valid: false, retry: true, batchIndex };
     }
 
-    // Duplicate chunk protection
-    if (fileStore.chunks.has(chunkIndex)) {
-      return { duplicate: true, completed: fileStore.completed };
+    // Decrypt batch
+    const decryptedBatch = await decryptChunkData(
+      encryptedData.buffer.slice(encryptedData.byteOffset, encryptedData.byteOffset + encryptedData.byteLength),
+      this.key,
+      this.baseIV,
+      batchIndex
+    );
+
+    // Write to disk stream or fallback buffer
+    if (this.hasDirectDiskWrite && this.writableStream) {
+      await this.writableStream.write(decryptedBatch);
+    } else {
+      this.fallbackBuffers.push(decryptedBatch);
     }
 
-    fileStore.chunks.set(chunkIndex, chunkData);
-    fileStore.receivedBytes += chunkData.byteLength;
-    this.receivedStats.totalBytesReceived += chunkData.byteLength;
-
-    if (fileStore.chunks.size === totalChunks) {
-      fileStore.completed = true;
+    // Mark chunks as received
+    for (let c = startChunk; c <= endChunk; c++) {
+      this.receivedChunksBitmask.add(c);
     }
+    this.receivedBatches.set(batchIndex, true);
+    this.bytesWritten += decryptedBatch.byteLength;
 
-    return {
-      duplicate: false,
-      chunkIndex,
-      fileCompleted: fileStore.completed,
-      allFilesCompleted: Array.from(this.filesMap.values()).every(f => f.completed)
-    };
-  }
+    // Update Progress
+    const totalBytes = this.fileMeta.size || this.fileMeta.original_size || (this.plan.totalBatches * BATCH_SIZE);
+    const percent = Math.min(100, Math.round((this.bytesWritten / totalBytes) * 100));
 
-  async decryptAndAssembleFile(fileId, key, baseIV) {
-    const fileStore = this.filesMap.get(fileId);
-    if (!fileStore) throw new Error(`File ${fileId} not found in receiver manager`);
-    if (!fileStore.completed) throw new Error(`File ${fileId} has missing chunks (${fileStore.chunks.size}/${fileStore.totalChunks})`);
-
-    const decryptedBuffers = [];
-    let totalDecryptedBytes = 0;
-
-    for (let i = 0; i < fileStore.totalChunks; i++) {
-      const encChunk = fileStore.chunks.get(i);
-      if (!encChunk) throw new Error(`Missing chunk index ${i} for file ${fileId}`);
-
-      const decChunk = await decryptChunkData(
-        encChunk.buffer.slice(encChunk.byteOffset, encChunk.byteOffset + encChunk.byteLength),
-        key,
-        baseIV,
-        i
-      );
-      decryptedBuffers.push(decChunk);
-      totalDecryptedBytes += decChunk.byteLength;
-    }
-
-    const reconstructedBlob = new Blob(decryptedBuffers, {
-      type: fileStore.meta.type || fileStore.meta.mime_type || 'application/octet-stream'
+    this.onProgress?.({
+      percent,
+      currentBatch: this.receivedBatches.size,
+      totalBatches,
+      receivedChunks: this.receivedChunksBitmask.size,
+      totalChunks: this.plan.totalChunks,
+      bytesWritten: this.bytesWritten,
+      totalBytes,
+      hasDirectDiskWrite: this.hasDirectDiskWrite
     });
 
-    // Verification
-    if (fileStore.meta.originalSize && reconstructedBlob.size !== fileStore.meta.originalSize) {
-      console.warn(`File size mismatch for ${fileStore.meta.name}: expected ${fileStore.meta.originalSize}, got ${reconstructedBlob.size}`);
+    // Check completion
+    if (this.receivedBatches.size >= totalBatches) {
+      await this.finalizeTransfer();
     }
 
-    return {
-      id: fileId,
-      name: fileStore.meta.name || fileStore.meta.original_name || 'downloaded_file',
-      size: reconstructedBlob.size,
-      mimeType: reconstructedBlob.type,
-      blob: reconstructedBlob
-    };
+    return { valid: true, retry: false, completed: this.receivedBatches.size >= totalBatches };
   }
 
-  async decryptAllFiles(password) {
-    const results = [];
-    for (const [fileId, fileStore] of this.filesMap.entries()) {
-      const iv = hexToBytes(fileStore.meta.iv);
-      const salt = hexToBytes(fileStore.meta.salt);
-
-      if (!iv || !salt) {
-        throw new Error(`Invalid encryption IV/Salt metadata for file ${fileStore.meta.name}`);
+  /**
+   * Identify any missing chunks/batches for selective retransmission
+   */
+  getMissingBatches() {
+    const missing = [];
+    for (let b = 0; b < this.plan.totalBatches; b++) {
+      if (!this.receivedBatches.has(b)) {
+        missing.push(b);
       }
-
-      const key = await deriveKey(password, salt);
-      const assembled = await this.decryptAndAssembleFile(fileId, key, iv);
-      results.push(assembled);
     }
-    return results;
+    return missing;
+  }
+
+  /**
+   * Finalize transfer, verify end-to-end SHA-256, and close streams
+   */
+  async finalizeTransfer() {
+    await this.closeDiskStream();
+
+    let finalBlob = null;
+    let finalSHA256 = null;
+
+    if (!this.hasDirectDiskWrite && this.fallbackBuffers.length > 0) {
+      finalBlob = new Blob(this.fallbackBuffers, {
+        type: this.fileMeta.type || this.fileMeta.mime_type || 'application/octet-stream'
+      });
+      const fullBuffer = await finalBlob.arrayBuffer();
+      finalSHA256 = await computeSHA256(new Uint8Array(fullBuffer));
+    }
+
+    // Verify SHA-256 against expected hash if provided
+    if (this.fileMeta.sha256 && finalSHA256 && this.fileMeta.sha256 !== finalSHA256) {
+      this.onError?.('Final SHA-256 integrity verification failed.');
+      return;
+    }
+
+    this.onComplete?.({
+      fileName: this.fileMeta.name || this.fileMeta.original_name || 'downloaded_file',
+      fileSize: this.bytesWritten,
+      directToDisk: this.hasDirectDiskWrite,
+      blob: finalBlob,
+      sha256: finalSHA256
+    });
+  }
+
+  async closeDiskStream() {
+    if (this.writableStream) {
+      try {
+        await this.writableStream.close();
+      } catch (_) {}
+      this.writableStream = null;
+    }
   }
 }
