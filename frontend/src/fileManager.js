@@ -2,11 +2,152 @@
  * FileShare File Manager Module (LLD: File Manager)
  * Responsible for selecting, validating, inspecting, and packaging files.
  * Supports single and multi-file transfers up to 2 GB total.
+ * Refactored according to SOLID principles.
  */
 
 export const MAX_TOTAL_TRANSFER_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
 
 const BUNDLE_MAGIC = new Uint8Array([0x46, 0x53, 0x42, 0x55, 0x4e, 0x44, 0x4c, 0x31]); // "FSBUNDLE1"
+
+// ─── Pre-computed Extension Sets (Open/Closed Principle & Performance) ─────
+const IMAGE_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'apng', 'jfif', 'pjpeg', 'pjp', 'tif', 'tiff'
+]);
+
+const VIDEO_EXTENSIONS = new Set([
+  'mp4', 'webm', 'mov', 'm4v', 'ogv', 'mkv', 'avi', 'wmv', 'flv', '3gp', '3g2', 'ts'
+]);
+
+const AUDIO_EXTENSIONS = new Set([
+  'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'mid', 'midi', 'aiff'
+]);
+
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'csv', 'tsv', 'json', 'js', 'jsx', 'ts', 'tsx', 'py', 'pyw', 'html', 'htm', 'xhtml', 'css',
+  'md', 'markdown', 'mdown', 'xml', 'log', 'yaml', 'yml', 'sh', 'bash', 'zsh', 'sql', 'env',
+  'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx', 'cs', 'java', 'rs', 'go', 'php', 'rb', 'swift',
+  'kt', 'kts', 'dart', 'scala', 'r', 'lua', 'toml', 'ini', 'cfg', 'conf', 'dockerfile',
+  'bat', 'cmd', 'ps1', 'psm1', 'graphql', 'gql', 'scss', 'sass', 'less', 'vue', 'svelte',
+  'tex', 'rst', 'diff', 'patch', 'properties', 'reg', 'gitignore', 'gitattributes', 'lock', 'json5'
+]);
+
+const ARCHIVE_EXTENSIONS = new Set([
+  'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz', 'zst', 'iso', 'cab', 'lz', 'lz4'
+]);
+
+const DOCUMENT_EXTENSIONS = new Set([
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'pages', 'numbers', 'key'
+]);
+
+const APP_EXTENSIONS = new Set([
+  'exe', 'dmg', 'apk', 'msi', 'deb', 'rpm', 'bin', 'appimage', 'pkg'
+]);
+
+/**
+ * Category detection strategies (Open/Closed Principle & Single Responsibility)
+ */
+const CATEGORY_DETECTORS = [
+  {
+    matches: (ext, mime) => IMAGE_EXTENSIONS.has(ext) || mime.startsWith('image/'),
+    result: (ext, mime) => ({
+      category: 'image',
+      label: 'Image',
+      ext,
+      mime: mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+      canPreviewDirectly: true,
+      description: 'High-resolution in-browser image viewer.'
+    })
+  },
+  {
+    matches: (ext, mime) => VIDEO_EXTENSIONS.has(ext) || mime.startsWith('video/'),
+    result: (ext, mime) => ({
+      category: 'video',
+      label: 'Video',
+      ext,
+      mime: mime || `video/${ext}`,
+      canPreviewDirectly: true,
+      description: 'In-browser video player with full playback controls.'
+    })
+  },
+  {
+    matches: (ext, mime) => AUDIO_EXTENSIONS.has(ext) || mime.startsWith('audio/'),
+    result: (ext, mime) => ({
+      category: 'audio',
+      label: 'Audio',
+      ext,
+      mime: mime || `audio/${ext}`,
+      canPreviewDirectly: true,
+      description: 'In-browser streaming audio player.'
+    })
+  },
+  {
+    matches: (ext, mime) => ext === 'pdf' || mime === 'application/pdf',
+    result: (ext) => ({
+      category: 'pdf',
+      label: 'PDF Document',
+      ext,
+      mime: 'application/pdf',
+      canPreviewDirectly: true,
+      description: 'Multi-page document preview.'
+    })
+  },
+  {
+    matches: (ext, mime) =>
+      TEXT_EXTENSIONS.has(ext) ||
+      mime.startsWith('text/') ||
+      mime.includes('json') ||
+      mime.includes('javascript') ||
+      mime.includes('xml') ||
+      mime.includes('yaml') ||
+      mime.includes('sql') ||
+      mime.includes('toml'),
+    result: (ext, mime) => ({
+      category: 'text',
+      label: 'Source / Text',
+      ext,
+      mime: mime || 'text/plain',
+      canPreviewDirectly: true,
+      description: 'Syntax and monospace text viewer.'
+    })
+  },
+  {
+    matches: (ext, mime) =>
+      ARCHIVE_EXTENSIONS.has(ext) ||
+      mime.includes('zip') ||
+      mime.includes('compressed') ||
+      mime.includes('archive'),
+    result: (ext, mime) => ({
+      category: 'archive',
+      label: 'Zip / Archive',
+      ext,
+      mime: mime || 'application/zip',
+      canPreviewDirectly: false,
+      description: 'Compressed archive. Download and extract on your device.'
+    })
+  },
+  {
+    matches: (ext) => DOCUMENT_EXTENSIONS.has(ext),
+    result: (ext, mime) => ({
+      category: 'document',
+      label: 'Office Document',
+      ext,
+      mime: mime || 'application/octet-stream',
+      canPreviewDirectly: false,
+      description: 'Proprietary document. Download to open in office viewer.'
+    })
+  },
+  {
+    matches: (ext) => APP_EXTENSIONS.has(ext),
+    result: (ext, mime) => ({
+      category: 'app',
+      label: 'Installer / App',
+      ext,
+      mime: mime || 'application/octet-stream',
+      canPreviewDirectly: false,
+      description: 'Application binary or disk image. Download to install.'
+    })
+  }
+];
 
 /**
  * Categorize a file by extension and MIME type for preview and display purposes.
@@ -15,109 +156,10 @@ export function detectFileType(fileName = '', mimeType = '') {
   const ext = (fileName || '').split('.').pop().toLowerCase();
   const mime = (mimeType || '').toLowerCase();
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'apng', 'jfif', 'pjpeg', 'pjp', 'tif', 'tiff'];
-  const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'ogv', 'mkv', 'avi', 'wmv', 'flv', '3gp', '3g2', 'ts'];
-  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'mid', 'midi', 'aiff'];
-  const textExts = [
-    'txt', 'csv', 'tsv', 'json', 'js', 'jsx', 'ts', 'tsx', 'py', 'pyw', 'html', 'htm', 'xhtml', 'css',
-    'md', 'markdown', 'mdown', 'xml', 'log', 'yaml', 'yml', 'sh', 'bash', 'zsh', 'sql', 'env',
-    'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx', 'cs', 'java', 'rs', 'go', 'php', 'rb', 'swift',
-    'kt', 'kts', 'dart', 'scala', 'r', 'lua', 'toml', 'ini', 'cfg', 'conf', 'dockerfile',
-    'bat', 'cmd', 'ps1', 'psm1', 'graphql', 'gql', 'scss', 'sass', 'less', 'vue', 'svelte',
-    'tex', 'rst', 'diff', 'patch', 'properties', 'reg', 'gitignore', 'gitattributes', 'lock', 'json5'
-  ];
-  const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz', 'zst', 'iso', 'cab', 'lz', 'lz4'];
-  const docExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'pages', 'numbers', 'key'];
-  const appExts = ['exe', 'dmg', 'apk', 'msi', 'deb', 'rpm', 'bin', 'appimage', 'pkg'];
-
-  if (imageExts.includes(ext) || mime.startsWith('image/')) {
-    return {
-      category: 'image',
-      label: 'Image',
-      ext,
-      mime: mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
-      canPreviewDirectly: true,
-      description: 'High-resolution in-browser image viewer.'
-    };
-  }
-  if (videoExts.includes(ext) || mime.startsWith('video/')) {
-    return {
-      category: 'video',
-      label: 'Video',
-      ext,
-      mime: mime || `video/${ext}`,
-      canPreviewDirectly: true,
-      description: 'In-browser video player with full playback controls.'
-    };
-  }
-  if (audioExts.includes(ext) || mime.startsWith('audio/')) {
-    return {
-      category: 'audio',
-      label: 'Audio',
-      ext,
-      mime: mime || `audio/${ext}`,
-      canPreviewDirectly: true,
-      description: 'In-browser streaming audio player.'
-    };
-  }
-  if (ext === 'pdf' || mime === 'application/pdf') {
-    return {
-      category: 'pdf',
-      label: 'PDF Document',
-      ext,
-      mime: 'application/pdf',
-      canPreviewDirectly: true,
-      description: 'Multi-page document preview.'
-    };
-  }
-  if (
-    textExts.includes(ext) ||
-    mime.startsWith('text/') ||
-    mime.includes('json') ||
-    mime.includes('javascript') ||
-    mime.includes('xml') ||
-    mime.includes('yaml') ||
-    mime.includes('sql') ||
-    mime.includes('toml')
-  ) {
-    return {
-      category: 'text',
-      label: 'Source / Text',
-      ext,
-      mime: mime || 'text/plain',
-      canPreviewDirectly: true,
-      description: 'Syntax and monospace text viewer.'
-    };
-  }
-  if (archiveExts.includes(ext) || mime.includes('zip') || mime.includes('compressed') || mime.includes('archive')) {
-    return {
-      category: 'archive',
-      label: 'Zip / Archive',
-      ext,
-      mime: mime || 'application/zip',
-      canPreviewDirectly: false,
-      description: 'Compressed archive. Browsers cannot render ZIP contents directly; click below to download and extract on your device.'
-    };
-  }
-  if (docExts.includes(ext)) {
-    return {
-      category: 'document',
-      label: 'Office Document',
-      ext,
-      mime: mime || 'application/octet-stream',
-      canPreviewDirectly: false,
-      description: 'Proprietary document. Download to open in Microsoft Office, Google Docs, or LibreOffice.'
-    };
-  }
-  if (appExts.includes(ext)) {
-    return {
-      category: 'app',
-      label: 'Installer / App',
-      ext,
-      mime: mime || 'application/octet-stream',
-      canPreviewDirectly: false,
-      description: 'Application binary or disk image. Download to install or mount on your operating system.'
-    };
+  for (const detector of CATEGORY_DETECTORS) {
+    if (detector.matches(ext, mime)) {
+      return detector.result(ext, mime);
+    }
   }
 
   return {
@@ -202,7 +244,6 @@ export async function packFiles(files) {
   // Multi-file bundle
   const manifest = [];
   const blobs = [BUNDLE_MAGIC];
-  let offset = 0;
 
   for (const file of fileArray) {
     manifest.push({

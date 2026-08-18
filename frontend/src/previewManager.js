@@ -1,16 +1,80 @@
 /**
- * SecureShare Preview Manager Module
+ * FileShare Preview Manager Module
  * Manages decrypted file preview lifecycles, media Object URL allocations,
- * and automatic memory cleanup/revocation without artificial countdown timers.
+ * and automatic memory cleanup/revocation according to SOLID principles.
  */
 
 import { detectFileType } from './fileManager.js';
+
+const MAX_DECODABLE_TEXT_SIZE = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Preview Provider Strategies (Open/Closed Principle & Single Responsibility)
+ */
+const PREVIEW_STRATEGIES = [
+  {
+    canHandle: (detection) =>
+      ['image', 'video', 'audio', 'pdf'].includes(detection.category),
+    process: (fileItem, detection, registerUrl) => {
+      const mediaBlob = fileItem.blob || new Blob([fileItem.data], { type: detection.mime });
+      let previewUrl = null;
+      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        previewUrl = URL.createObjectURL(mediaBlob);
+        registerUrl(previewUrl);
+      } else {
+        previewUrl = `blob:${fileItem.name}`;
+      }
+      return {
+        previewData: previewUrl,
+        previewUrl,
+        isDirect: true,
+        category: detection.category
+      };
+    }
+  },
+  {
+    canHandle: (detection) => detection.category === 'text',
+    process: (fileItem, detection) => {
+      try {
+        const textBytes = fileItem.data
+          ? fileItem.data.byteLength > MAX_DECODABLE_TEXT_SIZE
+            ? fileItem.data.slice(0, MAX_DECODABLE_TEXT_SIZE)
+            : fileItem.data
+          : new Uint8Array();
+        const previewData = new TextDecoder('utf-8', { fatal: false }).decode(textBytes);
+        return { previewData, previewUrl: null, isDirect: true, category: 'text' };
+      } catch (_) {
+        return { previewData: '(Unable to decode text content)', previewUrl: null, isDirect: false, category: 'text' };
+      }
+    }
+  },
+  {
+    canHandle: (_, fileItem) =>
+      Boolean(fileItem.data && fileItem.data.byteLength > 0 && fileItem.data.byteLength <= MAX_DECODABLE_TEXT_SIZE),
+    process: (fileItem) => {
+      try {
+        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(fileItem.data);
+        const sample = decoded.slice(0, 1000);
+        const nonPrintableCount = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
+        if (nonPrintableCount / (sample.length || 1) < 0.05) {
+          return { previewData: decoded, previewUrl: null, isDirect: true, category: 'text' };
+        }
+      } catch (_) {}
+      return { previewData: null, previewUrl: null, isDirect: false, category: 'other' };
+    }
+  }
+];
 
 export class PreviewManager {
   constructor({ onClose } = {}) {
     this.onClose = onClose || (() => {});
     this.activeObjectUrls = new Set();
     this.currentPreview = null;
+    this.registerUrl = this.registerUrl.bind(this);
+  }
+
+  registerUrl(url) {
+    if (url) this.activeObjectUrls.add(url);
   }
 
   /**
@@ -18,67 +82,34 @@ export class PreviewManager {
    * Allocates Object URLs for media or decodes text.
    */
   preparePreview(fileItem) {
-    // Clean up any existing active URLs
     this.cleanup();
 
-    const { name, size, type, data, blob } = fileItem;
+    const { name, size, type } = fileItem;
     const detection = detectFileType(name, type);
-    let previewData = null;
-    let previewUrl = null;
-    let isDirect = detection.canPreviewDirectly;
+    let previewResult = {
+      previewData: null,
+      previewUrl: null,
+      isDirect: detection.canPreviewDirectly,
+      category: detection.category
+    };
 
-    if (detection.category === 'image' || detection.category === 'video' || detection.category === 'audio' || detection.category === 'pdf') {
-      const mediaBlob = blob || new Blob([data], { type: detection.mime });
-      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-        previewUrl = URL.createObjectURL(mediaBlob);
-        this.activeObjectUrls.add(previewUrl);
-      } else {
-        previewUrl = `blob:${name}`;
+    for (const strategy of PREVIEW_STRATEGIES) {
+      if (strategy.canHandle(detection, fileItem)) {
+        previewResult = strategy.process(fileItem, detection, this.registerUrl);
+        break;
       }
-      previewData = previewUrl;
-    } else if (detection.category === 'text') {
-      try {
-        // Decode full text (safely up to 10 MB for browser DOM rendering performance)
-        const textBytes = data ? (data.byteLength > 10 * 1024 * 1024 ? data.slice(0, 10 * 1024 * 1024) : data) : new Uint8Array();
-        previewData = new TextDecoder('utf-8', { fatal: false }).decode(textBytes);
-      } catch (_) {
-        previewData = '(Unable to decode text content)';
-        isDirect = false;
-      }
-    } else if (data && data.byteLength > 0 && data.byteLength <= 10 * 1024 * 1024) {
-      // Automatic text fallback for any unlisted code or readable text file
-      try {
-        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(data);
-        // Ensure it contains printable text (no large runs of null bytes)
-        const sample = decoded.slice(0, 1000);
-        const nonPrintableCount = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
-        if (nonPrintableCount / (sample.length || 1) < 0.05) {
-          previewData = decoded;
-          isDirect = true;
-          detection.category = 'text';
-        } else {
-          isDirect = false;
-          previewData = null;
-        }
-      } catch (_) {
-        isDirect = false;
-        previewData = null;
-      }
-    } else {
-      isDirect = false;
-      previewData = null;
     }
 
     this.currentPreview = {
       fileName: name,
       fileSize: size,
       mimeType: type || detection.mime,
-      category: detection.category,
+      category: previewResult.category || detection.category,
       label: detection.label || 'File',
       description: detection.description || '',
-      canPreviewDirectly: isDirect,
-      content: previewData,
-      url: previewUrl,
+      canPreviewDirectly: previewResult.isDirect,
+      content: previewResult.previewData,
+      url: previewResult.previewUrl,
       startedAt: Date.now()
     };
 
