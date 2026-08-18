@@ -195,12 +195,16 @@ function DownloadPage() {
           type="text"
           placeholder="Paste transfer code (e.g. FS-A1B2C3D4E5F60708-9F8A73C21D2E3F40)"
           value={codeInput}
-          onChange={(e) => setCodeInput(e.target.value)}
+          onChange={(e) => setCodeInput(e.target.value.replace(/[^a-zA-Z0-9\-:_/?.#=&]/g, ''))}
           onKeyDown={(e) => e.key === 'Enter' && handleSearchCode()}
           inputMode="text"
           autoCapitalize="characters"
           autoCorrect="off"
+          autoComplete="off"
           spellCheck="false"
+          data-lpignore="true"
+          data-form-type="other"
+          maxLength={128}
           disabled={isLoading || isDecrypting}
           aria-label="Transfer Code"
         />

@@ -630,20 +630,12 @@ select:focus {
   color: var(--primary);
 }
 
-.hero .subtitle {
-  font-size: clamp(1.05rem, 2.2vw, 1.25rem);
-  color: var(--fg-muted);
-  max-width: 680px;
-  margin: 0 auto 1.5rem;
-  line-height: 1.6;
-}
-
 .hero-points-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 0.85rem;
-  max-width: 820px;
-  margin: 0 auto 2.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.9rem;
+  max-width: 960px;
+  margin: 1.75rem auto 2.5rem;
   text-align: left;
 }
 

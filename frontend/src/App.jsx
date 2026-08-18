@@ -219,15 +219,10 @@ function HomePage() {
           Send Files Safely.<br />
           <span className="hero-highlight">Send, Share and Done.</span>
         </h1>
-        <p className="subtitle">
-          Your files are locked directly in your browser with AES-256-GCM before uploading.
-          Only the person with your transfer code can unlock and open them.
-        </p>
-
         <div className="hero-points-list">
           <div className="hero-point-item">
             <CheckCircle2 size={16} className="text-emerald" />
-            <span><strong>Zero-Knowledge:</strong> Encrypted in browser before upload</span>
+            <span><strong>Zero-Knowledge:</strong> Encrypted in browser with AES-256-GCM</span>
           </div>
           <div className="hero-point-item">
             <CheckCircle2 size={16} className="text-blue" />
@@ -238,8 +233,16 @@ function HomePage() {
             <span><strong>Auto-Expire:</strong> Self-destructs within 60 mins or on first read</span>
           </div>
           <div className="hero-point-item">
-            <Sparkles size={16} className="text-slate" />
-            <span><strong>Zero Friction:</strong> No accounts, logins, or trackers</span>
+            <Sparkles size={16} className="text-emerald" />
+            <span><strong>Stream &amp; Batch:</strong> 256 KB slices &amp; 2 MB batches in memory</span>
+          </div>
+          <div className="hero-point-item">
+            <ShieldCheck size={16} className="text-blue" />
+            <span><strong>Direct to Disk:</strong> Streams decrypted data without RAM overflow</span>
+          </div>
+          <div className="hero-point-item">
+            <Lock size={16} className="text-slate" />
+            <span><strong>Zero Data Retention:</strong> No accounts, logs, or stored plaintext</span>
           </div>
         </div>
 
