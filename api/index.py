@@ -193,7 +193,9 @@ def create_app():
     return app, socketio
 
 
-app, socketio = create_app()
+_bootstrap = create_app()
+app = _bootstrap[0]
+socketio = _bootstrap[1]
 
 if __name__ == "__main__":
     logger.info("Starting FileShare Flask + SocketIO Server on %s:%s", HOST, DEFAULT_PORT)

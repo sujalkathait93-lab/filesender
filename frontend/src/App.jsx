@@ -43,10 +43,16 @@ function App() {
   const detectServer = async () => {
     try {
       const health = await api.health();
+      // #region agent log
+      fetch('http://127.0.0.1:7888/ingest/1f5ec640-be76-4d04-a0a8-cbf3824fea44',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'525afc'},body:JSON.stringify({sessionId:'525afc',hypothesisId:'A',location:'App.jsx:detectServer',message:'health ok',data:{status:health?.status,persistent:health?.persistent_storage,origin:window.location.origin},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
+      // #endregion
       if (!health || health.status !== 'healthy') throw new Error('Health check failed');
       setServerOnline(true);
       setEphemeralStorage(health.persistent_storage === false);
-    } catch (_) {
+    } catch (err) {
+      // #region agent log
+      fetch('http://127.0.0.1:7888/ingest/1f5ec640-be76-4d04-a0a8-cbf3824fea44',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'525afc'},body:JSON.stringify({sessionId:'525afc',hypothesisId:'A',location:'App.jsx:detectServer',message:'health failed',data:{error:String(err?.message||err),origin:window.location.origin},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
+      // #endregion
       setServerOnline(false);
       setEphemeralStorage(false);
     }

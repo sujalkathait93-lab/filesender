@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "vercel-build": "vite build",
     "preview": "vite preview --host",
     "test:e2e": "playwright test"
   },
