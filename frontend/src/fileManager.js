@@ -221,6 +221,80 @@ export function formatBytes(bytes, decimals = 2) {
 }
 
 /**
+ * Intelligent File Size Tier Analyzer (SRP: Smart file size categorization & guidance)
+ */
+export function getFileSizeTier(bytes = 0) {
+  if (!bytes || bytes <= 0) {
+    return {
+      tier: 'empty',
+      label: 'No files selected',
+      badgeClass: 'badge-slate',
+      description: 'Select files up to 2 GB total.',
+      suggestP2P: false,
+      stegoRecommended: false
+    };
+  }
+
+  const ONE_MB = 1024 * 1024;
+  const TEN_MB = 10 * ONE_MB;
+  const FIFTY_MB = 50 * ONE_MB;
+  const TWO_HUNDRED_MB = 200 * ONE_MB;
+
+  if (bytes < ONE_MB) {
+    return {
+      tier: 'tiny',
+      label: 'Tiny (< 1 MB)',
+      badgeClass: 'badge-emerald',
+      description: 'Instant transfer & zero server strain. Great for Burn-on-Read or Steganography Vault.',
+      suggestP2P: false,
+      stegoRecommended: true
+    };
+  }
+
+  if (bytes <= TEN_MB) {
+    return {
+      tier: 'small',
+      label: 'Small (1 – 10 MB)',
+      badgeClass: 'badge-primary',
+      description: 'Standard Cloud Encrypted transfer. Uploads and encrypts in under 1 second.',
+      suggestP2P: false,
+      stegoRecommended: true
+    };
+  }
+
+  if (bytes <= FIFTY_MB) {
+    return {
+      tier: 'medium',
+      label: 'Medium (10 – 50 MB)',
+      badgeClass: 'badge-slate',
+      description: 'Standard Cloud Encrypted transfer with memory-safe chunking.',
+      suggestP2P: false,
+      stegoRecommended: false
+    };
+  }
+
+  if (bytes <= TWO_HUNDRED_MB) {
+    return {
+      tier: 'large',
+      label: 'Large (50 – 200 MB)',
+      badgeClass: 'badge-amber',
+      description: 'Stream & Batch memory pipeline active (256 KB slices). Memory-safe processing.',
+      suggestP2P: false,
+      stegoRecommended: false
+    };
+  }
+
+  return {
+    tier: 'very_large',
+    label: 'Very Large (> 200 MB)',
+    badgeClass: 'badge-purple',
+    description: 'Direct P2P Recommended: Eliminates server load and streams unlimited file sizes directly device-to-device.',
+    suggestP2P: true,
+    stegoRecommended: false
+  };
+}
+
+/**
  * Package single or multiple files into a unified binary stream.
  * If 1 file: returns file directly as primary.
  * If >1 files: packs into standard binary container with manifest header.

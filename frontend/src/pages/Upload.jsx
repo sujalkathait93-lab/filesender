@@ -10,7 +10,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react'
 import { formatBytes, copyToClipboard } from '../crypto'
 import { TransferStateMachine, TransferState } from '../stateMachine'
-import { MAX_TOTAL_TRANSFER_SIZE, detectFileType } from '../fileManager'
+import { MAX_TOTAL_TRANSFER_SIZE, detectFileType, getFileSizeTier } from '../fileManager'
 import { useFileUpload } from '../hooks/useFileUpload'
 import { useEncryptAndSend } from '../hooks/useEncryptAndSend'
 import { useP2PSession } from '../hooks/useP2PSession'
@@ -381,6 +381,34 @@ function UploadPage() {
                 />
               </div>
 
+              {/* Smart File Size Tier & Optimization Analyzer */}
+              {(() => {
+                const sizeTier = getFileSizeTier(totalSelectedSize);
+                return (
+                  <div className={`smart-tier-card tier-${sizeTier.tier} animate-in`}>
+                    <div className="smart-tier-top">
+                      <div className="smart-tier-badge-group">
+                        <span className={`badge ${sizeTier.badgeClass}`}>{sizeTier.label}</span>
+                        <span className="smart-tier-title">
+                          <Sparkles size={14} /> Smart Transfer Optimization
+                        </span>
+                      </div>
+                      {sizeTier.suggestP2P && !useP2P && (
+                        <button
+                          type="button"
+                          className="smart-tier-p2p-btn"
+                          onClick={() => setUseP2P(true)}
+                          disabled={isTransferring}
+                        >
+                          <Radio size={13} /> Enable Direct P2P (0 Server Load)
+                        </button>
+                      )}
+                    </div>
+                    <p className="smart-tier-desc">{sizeTier.description}</p>
+                  </div>
+                );
+              })()}
+
               {/* Enhanced Sharing Options */}
               <div className="vault-settings">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -451,6 +479,11 @@ function UploadPage() {
                         </div>
                         <span className="option-card__description">
                           Conceals encrypted payload bytes inside standard PNG pixels to bypass inspection filters.
+                          {useSteganography && totalSelectedSize > 10 * 1024 * 1024 && (
+                            <span style={{ display: 'block', color: 'var(--color-amber)', marginTop: 4, fontWeight: 600 }}>
+                              Note: Payload is {formatBytes(totalSelectedSize)}. Steganography requires a large carrier PNG to fit this data.
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>

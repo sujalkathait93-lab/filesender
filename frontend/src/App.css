@@ -2769,6 +2769,79 @@ button, a, input, select, textarea {
   margin-bottom: var(--space-4);
 }
 
+/* ─── Smart File Size Tier Analyzer & Recommendation Card ─────────── */
+
+.smart-tier-card {
+  margin: var(--space-3) 0 var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.smart-tier-card.tier-very_large {
+  border-color: rgba(168, 85, 247, 0.4);
+  background-color: rgba(168, 85, 247, 0.05);
+}
+
+.smart-tier-card.tier-tiny {
+  border-color: rgba(16, 185, 129, 0.4);
+  background-color: rgba(16, 185, 129, 0.05);
+}
+
+.smart-tier-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.smart-tier-badge-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.smart-tier-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fg-default);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smart-tier-desc {
+  font-size: 0.775rem;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.smart-tier-p2p-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  background-color: var(--accent);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  align-self: flex-start;
+}
+
+.smart-tier-p2p-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
 /* ─── Responsive Adjustments ─────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
