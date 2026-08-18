@@ -139,8 +139,8 @@ export function useEncryptAndSend(stateMachine) {
       const msg = (err.message || '').toLowerCase();
       let friendly = err.message || 'Something went wrong while uploading. Please try again.';
       if (status === 429) friendly = 'Too many uploads. Please wait a moment and retry.';
-      else if (status === 413 || msg.includes('2 gb') || msg.includes('payload too large') || msg.includes('maximum allowed size')) {
-        friendly = 'Upload exceeds the 2 GB limit. Please select files smaller than 2 GB, or enable Direct P2P mode.';
+      else if (status === 413 || msg.includes('2 gb') || msg.includes('payload too large') || msg.includes('maximum allowed size') || msg.includes('request entity too large')) {
+        friendly = 'File exceeds the server upload limit. Please select smaller files, or enable the "WebRTC Direct P2P" toggle to send unlimited file sizes directly.';
       } else if (msg.includes('network') || msg.includes('failed to fetch')) {
         friendly = 'Network error during upload. Check your connection and retry.';
       }
