@@ -105,6 +105,8 @@ class VercelPathMiddleware:
     def __call__(self, environ, start_response):
         matched = environ.get("HTTP_X_MATCHED_PATH") or environ.get("HTTP_X_VERCEL_PATH")
         if matched and environ.get("PATH_INFO") in ("/api/index.py", "/api/index", "/index.py", "/api", "/api/"):
+            if "?" in matched:
+                matched = matched.split("?")[0]
             environ["PATH_INFO"] = matched
         return self.wsgi_app(environ, start_response)
 
