@@ -209,7 +209,7 @@ const HeroSection = memo(function HeroSection({ onScrollToSection }) {
         </div>
         <div className="highlight-item">
           <CheckCircle2 size={15} />
-          <span>Up to 2 GB Transfer</span>
+          <span>Up to 1 GB Transfer</span>
         </div>
         <div className="highlight-item">
           <CheckCircle2 size={15} />

@@ -26,7 +26,7 @@ function mapDownloadError(err, fallback) {
   const msg = (err.message || '').toLowerCase();
   const name = err.name || '';
   if (status === 429) return 'Rate limit exceeded: Too many requests. Please wait 30 seconds and retry.';
-  if (status === 413) return 'File exceeds maximum size limit (2 GB).';
+  if (status === 413) return 'File exceeds maximum size limit (1 GB).';
   if (status === 410 || msg.includes('expired') || msg.includes('gone') || msg.includes('deleted')) {
     if (msg.includes('preview')) return 'In-browser preview limit reached for this transfer. Click Save & Download directly.';
     if (msg.includes('expired')) return 'This transfer code has expired (time limit reached) and was securely purged from the server.';

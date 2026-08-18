@@ -77,7 +77,7 @@ def _get_int_env(key: str, default: int) -> int:
     except (TypeError, ValueError):
         return default
 
-MAX_FILE_SIZE = _get_int_env("MAX_FILE_SIZE", 2 * 1024 * 1024 * 1024)  # 2 GB Max Total Size
+MAX_FILE_SIZE = _get_int_env("MAX_FILE_SIZE", 1 * 1024 * 1024 * 1024)  # 1 GB Max Total Size
 MAX_REFRESHES_PER_SESSION = _get_int_env("MAX_REFRESHES_PER_SESSION", 5)
 MAX_PREVIEWS_PER_FILE = _get_int_env("MAX_PREVIEWS_PER_FILE", 100)
 

@@ -13,13 +13,13 @@ export const TRANSFER_MODES = [
     badge: 'Recommended',
     badgeColor: 'badge-primary',
     simpleSummary: 'Lock your files in your browser and share with a Transfer Code or QR code.',
-    bestFor: 'Any files up to 2 GB (PDFs, docs, photos, videos, ZIPs)',
+    bestFor: 'Any files up to 1 GB (PDFs, docs, photos, videos, ZIPs)',
     steps: [
       {
         number: 1,
         title: 'Choose Your Files',
         desc: 'Drag and drop your files or click to browse. Files stay on your device until encrypted.',
-        tip: 'Works with single files or entire multi-file bundles up to 2 GB.'
+        tip: 'Works with single files or entire multi-file bundles up to 1 GB.'
       },
       {
         number: 2,
@@ -317,7 +317,7 @@ export const COMPARISON_ROWS = [
   },
   {
     feature: 'Max File Size',
-    cloud: 'Up to 2 GB',
+    cloud: 'Up to 1 GB',
     p2p: 'Unlimited (Live Stream)',
     stego: 'Carrier Image Capacity'
   },

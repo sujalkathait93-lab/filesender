@@ -1,11 +1,11 @@
 /**
  * FileShare File Manager Module (LLD: File Manager)
  * Responsible for selecting, validating, inspecting, and packaging files.
- * Supports single and multi-file transfers up to 2 GB total.
+ * Supports single and multi-file transfers up to 1 GB total.
  * Refactored according to SOLID principles.
  */
 
-export const MAX_TOTAL_TRANSFER_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+export const MAX_TOTAL_TRANSFER_SIZE = 1 * 1024 * 1024 * 1024; // 1 GB
 
 const BUNDLE_MAGIC = new Uint8Array([0x46, 0x53, 0x42, 0x55, 0x4e, 0x44, 0x4c, 0x31]); // "FSBUNDLE1"
 
@@ -173,7 +173,7 @@ export function detectFileType(fileName = '', mimeType = '') {
 }
 
 /**
- * Validate a selection of files against size limits (up to 2 GB total).
+ * Validate a selection of files against size limits (up to 1 GB total).
  */
 export function validateFiles(files) {
   const fileArray = Array.from(files || []);
@@ -195,7 +195,7 @@ export function validateFiles(files) {
     return {
       valid: false,
       totalSize,
-      error: `Total file size (${sizeGB} GB) exceeds maximum allowed limit of 2 GB.`,
+      error: `Total file size (${sizeGB} GB) exceeds maximum allowed limit of 1 GB.`,
       files: fileArray
     };
   }
@@ -229,7 +229,7 @@ export function getFileSizeTier(bytes = 0) {
       tier: 'empty',
       label: 'No files selected',
       badgeClass: 'badge-slate',
-      description: 'Select files up to 2 GB total.',
+      description: 'Select files up to 1 GB total.',
       suggestP2P: false,
       stegoRecommended: false
     };

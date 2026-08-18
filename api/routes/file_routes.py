@@ -117,7 +117,7 @@ def network_info():
 @file_bp.route("/api/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
 @file_bp.route("/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
 def upload_file():
-    """Upload encrypted file blob with max 2 GB total size validation."""
+    """Upload encrypted file blob with max 1 GB total size validation."""
     if request.method == "OPTIONS":
         return ("", 204)
 
@@ -135,7 +135,7 @@ def upload_file():
     try:
         result = _transfer_service.upload_file(file_obj, form)
     except ValueError as e:
-        raise PayloadTooLargeError(str(e)) if "2 GB" in str(e) else ApiError(str(e))
+        raise PayloadTooLargeError(str(e)) if ("1 GB" in str(e) or "2 GB" in str(e)) else ApiError(str(e))
 
     return jsonify(result)
 

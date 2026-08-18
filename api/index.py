@@ -116,7 +116,7 @@ def create_app():
     app = Flask(__name__)
     app.wsgi_app = VercelPathMiddleware(app.wsgi_app)
     app.config['SECRET_KEY'] = SECRET_KEY
-    app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE + 64 * 1024 * 1024  # 2 GB + encryption & multipart overhead
+    app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE + 64 * 1024 * 1024  # 1 GB + encryption & multipart overhead
 
     cors_origins = CORS_ORIGINS
     allow_credentials = CORS_ORIGINS != "*"

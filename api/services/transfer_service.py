@@ -60,7 +60,7 @@ class TransferService:
                 while chunk := file_obj.read(131072):  # 128 KB write buffer
                     encrypted_size += len(chunk)
                     if encrypted_size > MAX_FILE_SIZE:
-                        raise ValueError("Total file size cannot exceed 2 GB")
+                        raise ValueError("Total file size cannot exceed 1 GB")
                     f.write(chunk)
         except Exception:
             self.storage.delete_file(file_id)

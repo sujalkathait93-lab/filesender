@@ -262,7 +262,7 @@ function UploadPage() {
 
       <div className="page-header">
         <h2><Upload size={22} /> Send Files</h2>
-        <p>Drop your files below (up to 2 GB total). Encrypted end-to-end directly in your browser.</p>
+        <p>Drop your files below (up to 1 GB total). Encrypted end-to-end directly in your browser.</p>
       </div>
 
       <div className="wizard-steps" role="navigation" aria-label="Transfer Steps">
@@ -307,7 +307,7 @@ function UploadPage() {
             <p>
               {files.length > 0
                 ? `${formatBytes(totalSelectedSize)} selected • ${formatBytes(remainingCapacity)} remaining`
-                : 'Select single or multiple files • Up to 2 GB total'}
+                : 'Select single or multiple files • Up to 1 GB total'}
             </p>
             <input
               ref={fileInputRef}
@@ -371,13 +371,13 @@ function UploadPage() {
               <div className="capacity-bar-container">
                 <div className="capacity-labels">
                   <span>Total: {formatBytes(totalSelectedSize)}</span>
-                  <span>Max: 2 GB</span>
+                  <span>Max: 1 GB</span>
                 </div>
                 <progress
                   className={`capacity-progress ${isOverLimit ? 'capacity-progress--error' : ''}`}
                   value={totalSelectedSize}
                   max={MAX_TOTAL_TRANSFER_SIZE}
-                  aria-label="Selected file size relative to the 2 GB limit"
+                  aria-label="Selected file size relative to the 1 GB limit"
                 />
               </div>
 

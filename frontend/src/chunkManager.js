@@ -17,7 +17,7 @@ import { hexToBytes } from './hexUtils.js';
 export const CHUNK_SIZE = 256 * 1024; // 256 KB per chunk
 export const BATCH_CHUNKS_COUNT = 8;   // 8 chunks per batch
 export const BATCH_SIZE = CHUNK_SIZE * BATCH_CHUNKS_COUNT; // 2 MB per batch
-export const MAX_TOTAL_TRANSFER_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+export const MAX_TOTAL_TRANSFER_SIZE = 1 * 1024 * 1024 * 1024; // 1 GB
 
 /**
  * Compute SHA-256 checksum of an ArrayBuffer or Uint8Array
