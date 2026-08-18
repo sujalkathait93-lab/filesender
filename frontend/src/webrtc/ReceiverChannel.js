@@ -1,6 +1,8 @@
 /**
- * FileShare WebRTC Receiver Channel
- * Handles incoming binary batches, verifies checksums, requests retries for dropped batches,
+ * FileShare WebRTC Receiver Channel with Smart Optimization Support
+ *
+ * Handles incoming binary chunks and batches, verifies checksums,
+ * requests selective retries for dropped chunks without full-file restarts,
  * and streams decrypted data directly to disk via File System Access API.
  */
 
@@ -102,21 +104,37 @@ export class ReceiverChannel {
     const headerLength = view.getUint32(0, false);
     const headerBytes = packet.subarray(4, 4 + headerLength);
     const headerJson = new TextDecoder().decode(headerBytes);
-    const batchMeta = JSON.parse(headerJson);
+    const meta = JSON.parse(headerJson);
 
     const encryptedData = packet.subarray(4 + headerLength);
 
-    const result = await this.streamReceiver.acceptBatch(batchMeta, encryptedData);
+    if (meta.type === 'CHUNK_DATA' || meta.type === 'CHUNK_RETRY') {
+      const result = await this.streamReceiver.acceptChunk(meta, encryptedData);
+      if (result.retry) {
+        this.requestChunkRetry(result.chunkIndex);
+      }
+    } else {
+      // Batch format
+      const result = await this.streamReceiver.acceptBatch(meta, encryptedData);
+      if (result.retry) {
+        this.requestBatchRetry(result.batchIndex);
+      }
+    }
+  }
 
-    if (result.retry) {
-      // Send NACK to sender requesting batch retransmission
-      this.requestBatchRetry(result.batchIndex);
+  requestChunkRetry(chunkIndex) {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      this.onStatus?.(`Requesting retransmission for chunk ${chunkIndex + 1}...`);
+      this.dataChannel.send(JSON.stringify({
+        type: 'RETRY_CHUNK',
+        chunkIndex
+      }));
     }
   }
 
   requestBatchRetry(batchIndex) {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.onStatus?.(`Requesting retransmission for batch ${batchIndex}...`);
+      this.onStatus?.(`Requesting retransmission for batch ${batchIndex + 1}...`);
       this.dataChannel.send(JSON.stringify({
         type: 'RETRY_BATCH',
         batchIndex
@@ -148,7 +166,8 @@ export class ReceiverChannel {
       totalChunks,
       speedBytesPerSec: this.currentSpeed,
       etaSeconds,
-      hasDirectDiskWrite
+      hasDirectDiskWrite,
+      isSmartOptimized: true
     });
   }
 

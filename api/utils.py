@@ -1,64 +1,53 @@
 """
-FileShare Utilities
-Generic helper functions: ID generation, token hashing, datetime, network.
+FileShare Core Utilities
+Primary Responsibility: Datetime helpers and safe type coercion.
+Re-exports security tokens and network helpers for backwards compatibility.
 """
 
-import hashlib
-import hmac
-import secrets
-import socket
 from datetime import datetime, timezone
+
+# Re-exports for backwards compatibility
+from api.tokens import (
+    ACCESS_PROOF_PREFIX,
+    generate_id,
+    generate_owner_token,
+    hash_token,
+    tokens_match,
+    proofs_match,
+)
+from api.network import get_local_ips
+
+__all__ = [
+    "get_utc_now",
+    "get_utc_now_iso",
+    "safe_int",
+    "safe_float",
+    "generate_id",
+    "generate_owner_token",
+    "hash_token",
+    "tokens_match",
+    "proofs_match",
+    "ACCESS_PROOF_PREFIX",
+    "get_local_ips",
+]
 
 
 # ─── Datetime Helpers ───────────────────────────────────────────────────────
 
-def get_utc_now():
+def get_utc_now() -> datetime:
+    """Return timezone-aware UTC datetime."""
     return datetime.now(timezone.utc)
 
 
-def get_utc_now_iso():
+def get_utc_now_iso() -> str:
+    """Return timezone-aware UTC datetime formatted as ISO 8601 string."""
     return get_utc_now().isoformat()
-
-
-# ─── ID Generation ──────────────────────────────────────────────────────────
-
-def generate_id():
-    """16-character hex ID from CSPRNG (64 bits)."""
-    return secrets.token_hex(8)
-
-
-def generate_owner_token():
-    """Opaque token shown once to the sender for cancel/delete."""
-    return secrets.token_hex(16)
-
-
-def hash_token(token: str) -> str:
-    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
-
-
-def tokens_match(plain: str, hashed: str) -> bool:
-    if not plain or not hashed:
-        return False
-    return hmac.compare_digest(hash_token(plain), hashed)
-
-
-ACCESS_PROOF_PREFIX = "fileshare-access:"
-
-
-def proofs_match(provided: str, stored: str) -> bool:
-    """Constant-time compare of access-proof hex strings. Never logs values."""
-    if not provided or not stored:
-        return False
-    a = provided.strip().lower()
-    b = stored.strip().lower()
-    if len(a) != len(b):
-        return False
-    return hmac.compare_digest(a, b)
 
 
 # ─── Safe Type Coercion ─────────────────────────────────────────────────────
 
-def safe_int(value, default, min_val=None, max_val=None):
+def safe_int(value, default: int, min_val: int = None, max_val: int = None) -> int:
+    """Safely coerce input to integer with optional clamping."""
     try:
         result = int(value)
     except (TypeError, ValueError):
@@ -70,7 +59,8 @@ def safe_int(value, default, min_val=None, max_val=None):
     return result
 
 
-def safe_float(value, default, min_val=None, max_val=None):
+def safe_float(value, default: float, min_val: float = None, max_val: float = None) -> float:
+    """Safely coerce input to float with optional clamping."""
     try:
         result = float(value)
     except (TypeError, ValueError):
@@ -80,24 +70,3 @@ def safe_float(value, default, min_val=None, max_val=None):
     if max_val is not None:
         result = min(result, max_val)
     return result
-
-
-# ─── Network Helpers ────────────────────────────────────────────────────────
-
-def get_local_ips():
-    ips = []
-    try:
-        hostname = socket.gethostname()
-        ips.append(socket.gethostbyname(hostname))
-    except Exception:
-        pass
-
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ips.append(s.getsockname()[0])
-        s.close()
-    except Exception:
-        pass
-
-    return list(set(ips))

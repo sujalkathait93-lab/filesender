@@ -1,49 +1,39 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import {
-  Upload, File, X, Copy, Check, Shield, Lock, Key,
-  Image as ImageIcon, Flame, Clock, ArrowLeft, Info,
-  RefreshCw, Loader2, Users, Radio, Eye, Trash2,
-  FileText, Video, Music, FileCode, ShieldCheck, Sparkles, QrCode, HelpCircle,
-  Archive, Package, Zap
-} from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
-import { formatBytes, copyToClipboard } from '../crypto'
-import { TransferStateMachine, TransferState } from '../stateMachine'
-import { MAX_TOTAL_TRANSFER_SIZE, detectFileType, getFileSizeTier } from '../fileManager'
-import { useFileUpload } from '../hooks/useFileUpload'
-import { useEncryptAndSend } from '../hooks/useEncryptAndSend'
-import { useP2PSession } from '../hooks/useP2PSession'
-import { MeasurableProgressBar, ErrorAlert } from '../components/FeedbackStates'
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Upload, ArrowLeft, Loader2, Lock, Trash2 } from 'lucide-react';
+import { copyToClipboard } from '../crypto';
+import { TransferStateMachine, TransferState } from '../stateMachine';
+import { detectFileType } from '../utils/fileType';
+import { useFileUpload } from '../hooks/useFileUpload';
+import { useEncryptAndSend } from '../hooks/useEncryptAndSend';
+import { useP2PSession } from '../hooks/useP2PSession';
+import { ErrorAlert } from '../components/FeedbackStates';
 
-const MAX_REFRESHES = 5;
+import { DropZone } from '../components/upload/DropZone';
+import { SingleFileCard } from '../components/upload/SingleFileCard';
+import { TransferQueueList } from '../components/upload/TransferQueueList';
+import { CapacityBar } from '../components/upload/CapacityBar';
+import { VaultSettings } from '../components/upload/VaultSettings';
+import { TransferProgress } from '../components/upload/TransferProgress';
+import { TransferConfirmModal } from '../components/upload/TransferConfirmModal';
+import { LocalFilePreviewModal } from '../components/upload/LocalFilePreviewModal';
+import { FeatureGuideModal } from '../components/upload/FeatureGuideModal';
+import { ShareResultCard } from '../components/upload/ShareResultCard';
 
-export const formatExpiryLabel = (hours) => {
-  const mins = Math.round(hours * 60);
-  return `${mins} minutes`;
-};
-
-function getFileIcon(fileName, mimeType) {
-  const category = detectFileType(fileName, mimeType).category;
-  switch (category) {
-    case 'image': return <ImageIcon size={18} />;
-    case 'video': return <Video size={18} />;
-    case 'audio': return <Music size={18} />;
-    case 'text': return <FileCode size={18} />;
-    case 'pdf': return <FileText size={18} />;
-    case 'archive': return <Archive size={18} />;
-    case 'document': return <FileText size={18} />;
-    case 'app': return <Package size={18} />;
-    default: return <File size={18} />;
-  }
-}
-
+/**
+ * Upload Page Orchestrator Component
+ * Primary Responsibility: Manage state for upload workflows, orchestrating file selection, options, modals, and upload progression.
+ */
 function UploadPage() {
   const navigate = useNavigate();
   const [stateMachine] = useState(() => new TransferStateMachine(TransferState.IDLE));
   const [currentState, setCurrentState] = useState(TransferState.IDLE);
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [copied, setCopied] = useState(false);
+
+  // Advanced Details & Custom Settings state
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  const [showCustomOverride, setShowCustomOverride] = useState(false);
 
   // Pre-Transfer Confirmation Modal State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -62,19 +52,7 @@ function UploadPage() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewText, setPreviewText] = useState(null);
 
-  const confirmCloseRef = useRef(null);
   const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    if (!showConfirmModal) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setShowConfirmModal(false);
-    };
-    window.addEventListener('keydown', onKey);
-    confirmCloseRef.current?.focus();
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showConfirmModal]);
-
   const copyTimerRef = useRef(null);
 
   useEffect(() => {
@@ -91,8 +69,13 @@ function UploadPage() {
     error: fileError,
     setError: setFileError,
     totalSelectedSize,
-    remainingCapacity,
     isOverLimit,
+    batchAnalysis,
+    singleFileOptimization,
+    customSettings,
+    isSmartOptimized,
+    updateCustomSettings,
+    resetToSmartDefaults,
     addFiles,
     removeFile,
     clearFiles,
@@ -122,8 +105,8 @@ function UploadPage() {
   const supportsMultiple = typeof document !== 'undefined' && 'multiple' in document.createElement('input');
 
   useEffect(() => {
-    stateMachine.onStateChange = ({ currentState, userMessage }) => {
-      setCurrentState(currentState);
+    stateMachine.onStateChange = ({ currentState: nextState, userMessage }) => {
+      setCurrentState(nextState);
       setStatusMessage(userMessage);
     };
   }, [stateMachine]);
@@ -178,7 +161,8 @@ function UploadPage() {
         burnOnRead,
         expiryHours,
         maxDownloads,
-        totalSelectedSize
+        totalSelectedSize,
+        customSettings
       });
     } finally {
       setIsTransferring(false);
@@ -199,6 +183,8 @@ function UploadPage() {
     stopP2P();
     setCopied(false);
     setIsTransferring(false);
+    setShowAdvancedDetails(false);
+    setShowCustomOverride(false);
     stateMachine.transitionTo(TransferState.IDLE);
   };
 
@@ -207,7 +193,12 @@ function UploadPage() {
     setPreviewFile(fileObj);
     const detection = detectFileType(fileObj.name, fileObj.type);
 
-    if (detection.category === 'image' || detection.category === 'video' || detection.category === 'audio' || detection.category === 'pdf') {
+    if (
+      detection.category === 'image' ||
+      detection.category === 'video' ||
+      detection.category === 'audio' ||
+      detection.category === 'pdf'
+    ) {
       const url = URL.createObjectURL(fileObj);
       setPreviewUrl(url);
       setPreviewText(null);
@@ -218,7 +209,7 @@ function UploadPage() {
         if (typeof textResult === 'string') {
           const sample = textResult.slice(0, 1000);
           const nonPrintableCount = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
-          if (detection.category === 'text' || (nonPrintableCount / (sample.length || 1) < 0.05)) {
+          if (detection.category === 'text' || nonPrintableCount / (sample.length || 1) < 0.05) {
             setPreviewText(textResult);
             setPreviewUrl(null);
             return;
@@ -245,14 +236,8 @@ function UploadPage() {
     setPreviewText(null);
   };
 
-  useEffect(() => {
-    if (!previewFile) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') handleCloseLocalPreview();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [previewFile]);
+  const currentOpt =
+    singleFileOptimization || (batchAnalysis.files.length > 0 ? batchAnalysis.files[0] : null);
 
   return (
     <div className="page-container animate-in">
@@ -262,7 +247,7 @@ function UploadPage() {
 
       <div className="page-header">
         <h2><Upload size={22} /> Send Files</h2>
-        <p>Drop your files below (up to 1 GB total). Encrypted end-to-end directly in your browser.</p>
+        <p>Drop your file(s) below. Automatically analyzed and optimized for highest speed and zero-knowledge encryption.</p>
       </div>
 
       <div className="wizard-steps" role="navigation" aria-label="Transfer Steps">
@@ -284,47 +269,35 @@ function UploadPage() {
 
       {!result && (
         <>
-          <div
-            className={`drop-zone ${files.length > 0 ? 'file-selected' : ''} ${isDragging ? 'drag-over' : ''}`}
+          <DropZone
+            files={files}
+            isDragging={isDragging}
+            totalSelectedSize={totalSelectedSize}
+            supportsMultiple={supportsMultiple}
+            fileInputRef={fileInputRef}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            role="button"
-            tabIndex={0}
-            aria-label="Upload files drop zone. Click or drag and drop files here."
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-          >
-            <div className="drop-icon-wrapper">
-              <Upload size={26} />
-            </div>
-            <h3>{files.length > 0 ? `${files.length} file(s) selected` : 'Choose files or drag here'}</h3>
-            <p>
-              {files.length > 0
-                ? `${formatBytes(totalSelectedSize)} selected • ${formatBytes(remainingCapacity)} remaining`
-                : 'Select single or multiple files • Up to 1 GB total'}
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="file-input"
-              multiple={supportsMultiple}
-              onChange={handleFileSelect}
-              aria-hidden="true"
-            />
-          </div>
+            onFileSelect={handleFileSelect}
+          />
 
           {files.length > 0 && (
             <div className="file-info animate-in">
               <div className="file-section-header">
-                <h4 className="file-section-heading">
-                  Selected Files ({files.length})
-                </h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <h4 className="file-section-heading" style={{ marginBottom: 0 }}>
+                    {files.length === 1 ? 'Selected File' : `Transfer Queue (${files.length} files)`}
+                  </h4>
+                  {isSmartOptimized ? (
+                    <span className="smart-badge-pill">
+                      ✓ Smart Optimized
+                    </span>
+                  ) : (
+                    <span className="smart-badge-pill badge-custom">
+                      ⚙ Custom Configuration
+                    </span>
+                  )}
+                </div>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={handleClearAll}
@@ -334,262 +307,64 @@ function UploadPage() {
                 </button>
               </div>
 
-              <div className="selected-files-list">
-                {files.map((f, idx) => (
-                  <div key={idx} className="file-item">
-                    <div className="file-item-left">
-                      <div className="file-icon file-icon--success">
-                        {getFileIcon(f.name, f.type)}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="file-item-name">{f.name}</div>
-                        <div className="file-item-size">{formatBytes(f.size)} • {f.type || 'File'}</div>
-                      </div>
-                    </div>
-                    <div className="file-row-actions">
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={(e) => { e.stopPropagation(); handleOpenLocalPreview(f); }}
-                        disabled={isTransferring}
-                        title={`Preview ${f.name}`}
-                      >
-                        <Eye size={13} /> Preview
-                      </button>
-                      <button
-                        className="file-remove-btn"
-                        onClick={() => removeFile(idx)}
-                        disabled={isTransferring}
-                        aria-label={`Remove ${f.name}`}
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="capacity-bar-container">
-                <div className="capacity-labels">
-                  <span>Total: {formatBytes(totalSelectedSize)}</span>
-                  <span>Max: 1 GB</span>
-                </div>
-                <progress
-                  className={`capacity-progress ${isOverLimit ? 'capacity-progress--error' : ''}`}
-                  value={totalSelectedSize}
-                  max={MAX_TOTAL_TRANSFER_SIZE}
-                  aria-label="Selected file size relative to the 1 GB limit"
+              {/* Single File Card */}
+              {files.length === 1 && currentOpt && (
+                <SingleFileCard
+                  file={files[0]}
+                  currentOpt={currentOpt}
+                  isTransferring={isTransferring}
+                  showAdvancedDetails={showAdvancedDetails}
+                  setShowAdvancedDetails={setShowAdvancedDetails}
+                  showCustomOverride={showCustomOverride}
+                  setShowCustomOverride={setShowCustomOverride}
+                  customSettings={customSettings}
+                  updateCustomSettings={updateCustomSettings}
+                  resetToSmartDefaults={resetToSmartDefaults}
+                  onOpenPreview={handleOpenLocalPreview}
+                  onRemoveFile={() => removeFile(0)}
                 />
-              </div>
-
-              {/* Smart File Size Tier & Optimization Analyzer */}
-              {(() => {
-                const sizeTier = getFileSizeTier(totalSelectedSize);
-                return (
-                  <div className={`smart-tier-card tier-${sizeTier.tier} animate-in`}>
-                    <div className="smart-tier-top">
-                      <div className="smart-tier-badge-group">
-                        <span className={`badge ${sizeTier.badgeClass}`}>{sizeTier.label}</span>
-                        <span className="smart-tier-title">
-                          <Sparkles size={14} /> Smart Transfer Optimization
-                        </span>
-                      </div>
-                      {sizeTier.suggestP2P && !useP2P && (
-                        <button
-                          type="button"
-                          className="smart-tier-p2p-btn"
-                          onClick={() => setUseP2P(true)}
-                          disabled={isTransferring}
-                        >
-                          <Radio size={13} /> Enable Direct P2P (0 Server Load)
-                        </button>
-                      )}
-                    </div>
-                    <p className="smart-tier-desc">{sizeTier.description}</p>
-                    {sizeTier.optimizationTip && (
-                      <div className="smart-tier-tip">
-                        <Zap size={13} className="smart-tier-tip-icon" />
-                        <span>{sizeTier.optimizationTip}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Enhanced Sharing Options */}
-              <div className="vault-settings">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <h4 className="settings-heading" style={{ marginBottom: 0 }}>
-                    Sharing &amp; Privacy Options
-                  </h4>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setShowGuideModal(true)}
-                    style={{ fontSize: '0.775rem', gap: 4 }}
-                  >
-                    <HelpCircle size={14} /> Feature Guide
-                  </button>
-                </div>
-
-                {/* Option 1: Burn-on-Read */}
-                <div
-                  className={`vault-option-card ${burnOnRead ? 'active' : ''}`}
-                  onClick={() => !isTransferring && handleBurnToggle()}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && handleBurnToggle()}
-                >
-                  <div className="option-card__content">
-                    <div className="option-card__copy">
-                      <div className="option-card__icon option-card__icon--danger">
-                        <Flame size={18} />
-                      </div>
-                      <div>
-                        <div className="option-card__title-row">
-                          <strong className="option-card__title">Burn-on-Read (Self-Destruct)</strong>
-                          <span className="badge badge-amber">ONE-TIME USE</span>
-                        </div>
-                        <span className="option-card__description">
-                          Permanently deletes payload from the server immediately after the first recipient downloads.
-                        </span>
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={burnOnRead}
-                      disabled={isTransferring}
-                      onChange={(e) => { e.stopPropagation(); handleBurnToggle(); }}
-                      className="option-checkbox"
-                      aria-label="Burn on read"
-                    />
-                  </div>
-                </div>
-
-                {/* Option 2: Image Steganography */}
-                <div
-                  className={`vault-option-card ${useSteganography ? 'active' : ''}`}
-                  onClick={() => !isTransferring && setUseSteganography(!useSteganography)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseSteganography(!useSteganography)}
-                >
-                  <div className="option-card__content">
-                    <div className="option-card__copy">
-                      <div className="option-card__icon option-card__icon--success">
-                        <ImageIcon size={18} />
-                      </div>
-                      <div>
-                        <div className="option-card__title-row">
-                          <strong className="option-card__title">Steganography Image Vault</strong>
-                          <span className="badge badge-emerald">STEALTH &lt;10MB</span>
-                        </div>
-                        <span className="option-card__description">
-                          Conceals encrypted payload bytes inside standard PNG pixels to bypass inspection filters.
-                          {useSteganography && totalSelectedSize > 10 * 1024 * 1024 && (
-                            <span style={{ display: 'block', color: 'var(--color-amber)', marginTop: 4, fontWeight: 600 }}>
-                              Note: Payload is {formatBytes(totalSelectedSize)}. Steganography requires a large carrier PNG to fit this data.
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={useSteganography}
-                      disabled={isTransferring}
-                      onChange={(e) => { e.stopPropagation(); setUseSteganography(e.target.checked); }}
-                      className="option-checkbox"
-                      aria-label="Steganography mode"
-                    />
-                  </div>
-                </div>
-
-                {/* Option 3: Direct P2P */}
-                <div
-                  className={`vault-option-card ${useP2P ? 'active' : ''}`}
-                  onClick={() => !isTransferring && setUseP2P(!useP2P)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseP2P(!useP2P)}
-                >
-                  <div className="option-card__content">
-                    <div className="option-card__copy">
-                      <div className="option-card__icon option-card__icon--primary">
-                        <Radio size={18} />
-                      </div>
-                      <div>
-                        <div className="option-card__title-row">
-                          <strong className="option-card__title">Direct P2P Transfer (WebRTC)</strong>
-                          <span className="badge badge-primary">FAST STREAM &gt;500MB</span>
-                        </div>
-                        <span className="option-card__description">
-                          Streams directly peer-to-peer between devices without storing files on intermediary servers.
-                        </span>
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={useP2P}
-                      disabled={isTransferring}
-                      onChange={(e) => { e.stopPropagation(); setUseP2P(e.target.checked); }}
-                      className="option-checkbox"
-                      aria-label="Direct P2P transfer"
-                    />
-                  </div>
-                </div>
-
-                {/* Download limit selection */}
-                <div className="expiry-row">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Users size={16} className="field-icon" />
-                    <label htmlFor="downloads-select">Download Limit</label>
-                  </div>
-                  <select
-                    id="downloads-select"
-                    value={maxDownloads}
-                    disabled={isTransferring}
-                    onChange={(e) => handleMaxDownloadsChange(e.target.value)}
-                  >
-                    <option value={0}>Unlimited (until expiry)</option>
-                    <option value={1}>1 download (Burn-on-Read)</option>
-                    <option value={5}>5 downloads</option>
-                    <option value={10}>10 downloads (Standard)</option>
-                    <option value={20}>20 downloads</option>
-                    <option value={50}>50 downloads</option>
-                    <option value={100}>100 downloads</option>
-                  </select>
-                </div>
-
-                {/* Expiry selection */}
-                <div className="expiry-row">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Clock size={16} className="field-icon" />
-                    <label htmlFor="expiry-select">Code Expiry (TTL)</label>
-                  </div>
-                  <select
-                    id="expiry-select"
-                    value={expiryHours}
-                    disabled={isTransferring}
-                    onChange={(e) => setExpiryHours(Number(e.target.value))}
-                  >
-                    <option value={0.25}>15 minutes</option>
-                    <option value={0.5}>30 minutes</option>
-                    <option value={0.75}>45 minutes</option>
-                    <option value={1}>60 minutes (Max)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Progress Bar during Transfer */}
-              {progress && (
-                <div style={{ marginBottom: 16 }}>
-                  <MeasurableProgressBar
-                    stage={progress.stage}
-                    percent={progress.percent}
-                    statusMessage={statusMessage}
-                  />
-                </div>
               )}
+
+              {/* Multiple Files Card & Queue Table */}
+              {files.length > 1 && (
+                <TransferQueueList
+                  files={files}
+                  totalSelectedSize={totalSelectedSize}
+                  batchAnalysis={batchAnalysis}
+                  isTransferring={isTransferring}
+                  showAdvancedDetails={showAdvancedDetails}
+                  setShowAdvancedDetails={setShowAdvancedDetails}
+                  onOpenPreview={handleOpenLocalPreview}
+                  onRemoveFile={removeFile}
+                />
+              )}
+
+              <CapacityBar
+                totalSelectedSize={totalSelectedSize}
+                isOverLimit={isOverLimit}
+              />
+
+              <VaultSettings
+                burnOnRead={burnOnRead}
+                onBurnToggle={handleBurnToggle}
+                useSteganography={useSteganography}
+                setUseSteganography={setUseSteganography}
+                useP2P={useP2P}
+                setUseP2P={setUseP2P}
+                maxDownloads={maxDownloads}
+                onMaxDownloadsChange={handleMaxDownloadsChange}
+                expiryHours={expiryHours}
+                setExpiryHours={setExpiryHours}
+                isTransferring={isTransferring}
+                onOpenGuide={() => setShowGuideModal(true)}
+              />
+
+              <TransferProgress
+                progress={progress}
+                files={files}
+                totalSelectedSize={totalSelectedSize}
+                statusMessage={statusMessage}
+              />
 
               <div style={{ marginTop: 20 }}>
                 <button
@@ -604,7 +379,7 @@ function UploadPage() {
                     </>
                   ) : (
                     <>
-                      <Lock size={18} /> Review &amp; Encrypt Transfer
+                      <Lock size={18} /> {files.length > 1 ? `Send All (${files.length} files)` : 'Send File'}
                     </>
                   )}
                 </button>
@@ -624,305 +399,52 @@ function UploadPage() {
         </div>
       )}
 
-      {/* Pre-Transfer Confirmation Modal (Platform-Aware Sheet/Dialog) */}
-      {showConfirmModal && (
-        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Confirm Transfer Details">
-          <div className="preview-modal modal-narrow">
-            <div className="preview-header">
-              <h3><Shield size={18} /> Confirm Transfer</h3>
-              <button className="preview-close" onClick={() => setShowConfirmModal(false)} aria-label="Close modal" ref={confirmCloseRef}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="preview-body">
-              <div className="confirmation-notice">
-                Please review your selected files and security settings before starting the browser-encrypted upload.
-              </div>
+      <TransferConfirmModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={handleConfirmedSend}
+        files={files}
+        totalSelectedSize={totalSelectedSize}
+        isSmartOptimized={isSmartOptimized}
+        currentOpt={currentOpt}
+        useSteganography={useSteganography}
+        burnOnRead={burnOnRead}
+        maxDownloads={maxDownloads}
+        expiryHours={expiryHours}
+      />
 
-              <div className="confirmation-row">
-                <label>Files</label>
-                <span className="word-break">{files.length} file(s) ({files.map(f => f.name).join(', ')})</span>
-              </div>
-              <div className="confirmation-row">
-                <label>Total Size</label>
-                <span>{formatBytes(totalSelectedSize)}</span>
-              </div>
-              <div className="confirmation-row">
-                <label>Sharing Mode</label>
-                <span>
-                  {useSteganography && burnOnRead ? 'Burn-on-Read + Steganography' : useSteganography ? 'Steganography Vault' : burnOnRead ? 'Burn-on-Read' : 'Standard AES-256-GCM'}
-                </span>
-              </div>
-              <div className="confirmation-row">
-                <label>Download Limit</label>
-                <span>
-                  {maxDownloads === 0 ? 'Unlimited' : maxDownloads === 1 ? '1 download (Burn-on-Read)' : `${maxDownloads} downloads`}
-                </span>
-              </div>
-              <div className="confirmation-row" style={{ borderBottom: 'none' }}>
-                <label>Code Expiry</label>
-                <span>{formatExpiryLabel(expiryHours)}</span>
-              </div>
-            </div>
-            <div className="preview-footer">
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowConfirmModal(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary btn-sm" onClick={handleConfirmedSend}>
-                Start Encrypted Transfer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LocalFilePreviewModal
+        previewFile={previewFile}
+        previewUrl={previewUrl}
+        previewText={previewText}
+        onClose={handleCloseLocalPreview}
+      />
 
-      {/* Sender Local File Preview Modal */}
-      {previewFile && (
-        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Local File Preview">
-          <div className="preview-modal">
-            <div className="preview-header">
-              <h3><Eye size={18} /> Preview: {previewFile.name}</h3>
-              <button className="preview-close" onClick={handleCloseLocalPreview} aria-label="Close preview">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="preview-body">
-              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'image' && (
-                <div className="local-preview-media">
-                  <img src={previewUrl} alt={previewFile.name} className="preview-image" />
-                </div>
-              )}
-              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'video' && (
-                <div className="local-preview-media">
-                  <video src={previewUrl} controls autoPlay playsInline className="preview-video" />
-                </div>
-              )}
-              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'audio' && (
-                <div className="preview-audio-wrapper">
-                  <audio src={previewUrl} controls autoPlay className="preview-audio" />
-                </div>
-              )}
-              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'pdf' && (
-                <div className="preview-pdf-wrapper">
-                  <iframe src={previewUrl} title="PDF Preview" className="preview-pdf" />
-                </div>
-              )}
-              {previewText && (
-                <pre className="preview-text">{previewText}</pre>
-              )}
-              {!previewUrl && !previewText && (() => {
-                const det = detectFileType(previewFile.name, previewFile.type);
-                return (
-                  <div className="preview-unsupported-card">
-                    <div className="file-icon" style={{ margin: '0 auto 12px auto', width: 44, height: 44 }}>
-                      {getFileIcon(previewFile.name, previewFile.type)}
-                    </div>
-                    <h4>{previewFile.name}</h4>
-                    <div style={{ margin: '8px 0' }}>
-                      <span className="badge badge-slate" style={{ fontSize: '0.75rem' }}>
-                        {det.label}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)', maxWidth: 440, margin: '8px auto' }}>
-                      {det.description || 'This file cannot be rendered inside the web browser. The recipient will download and open it directly on their device.'}
-                    </p>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)', marginTop: 8 }}>
-                      Total Size: {formatBytes(previewFile.size)} • Memory Verified
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="preview-footer">
-              <button className="btn btn-secondary btn-sm" onClick={handleCloseLocalPreview}>
-                Close Preview
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <FeatureGuideModal
+        isOpen={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+      />
 
-      {/* Interactive Feature & Privacy Guide Modal */}
-      {showGuideModal && (
-        <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Feature & Privacy Guide">
-          <div className="preview-modal">
-            <div className="preview-header">
-              <h3><HelpCircle size={18} /> Feature &amp; Privacy Guide</h3>
-              <button className="preview-close" onClick={() => setShowGuideModal(false)} aria-label="Close guide">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="preview-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Flame size={18} style={{ color: 'var(--warning-fg)' }} />
-                  <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Burn-on-Read (Self-Destruct)</strong>
-                  <span className="badge badge-amber">One-Time</span>
-                </div>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-                  <strong>How it works:</strong> The moment the recipient finishes downloading, the file is automatically and permanently purged from the server memory and disk.
-                  <br /><strong>When to use:</strong> Highly confidential one-time files like password exports, ID scans, bank statements, or salary slips.
-                </p>
-              </div>
-
-              <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <ImageIcon size={18} style={{ color: 'var(--success-fg)' }} />
-                  <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Steganography Image Vault</strong>
-                  <span className="badge badge-emerald">&lt;10 MB</span>
-                </div>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-                  <strong>How it works:</strong> Injects the encrypted file bytes into the least-significant bits (LSB) of innocent-looking PNG image pixels. The resulting image looks normal to any observer or network scanner.
-                  <br /><strong>When to use:</strong> Sensitive text keys, small documents, or files that need to bypass strict network DPI firewalls.
-                </p>
-              </div>
-
-              <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Radio size={18} style={{ color: 'var(--accent)' }} />
-                  <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Direct P2P Transfer (WebRTC)</strong>
-                  <span className="badge badge-primary">&gt;500 MB</span>
-                </div>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-                  <strong>How it works:</strong> Establishes a direct peer-to-peer browser data channel between sender and recipient. No files are uploaded to or stored on our servers.
-                  <br /><strong>When to use:</strong> Large video files, archives, and datasets where sender and receiver are online at the same time.
-                </p>
-              </div>
-
-              <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Clock size={18} style={{ color: 'var(--fg-default)' }} />
-                  <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>TTL Expiry &amp; Download Limits</strong>
-                </div>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-                  Set expiration timers (15 to 60 minutes) and download limits (1 to 100 downloads). When either threshold is reached, access is automatically revoked.
-                </p>
-              </div>
-            </div>
-            <div className="preview-footer">
-              <button className="btn btn-primary btn-sm" onClick={() => setShowGuideModal(false)}>
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Share / Result Section */}
-      {result && (
-        <div className="share-section animate-in">
-          <h3><Shield size={20} className="share-heading-icon" /> Transfer Encrypted &amp; Ready</h3>
-
-          <div className="status-message success">
-            <Check size={16} />
-            <span>Files encrypted and ready. Anyone with this code can download. Keep it safe!</span>
-          </div>
-
-          {useP2P && (
-            <div className={`status-message ${p2pState === 'connected' ? 'success' : 'info'}`}>
-              <Radio size={16} />
-              <span>{p2pStatus || 'Direct P2P: waiting for peer… REST share still active.'}</span>
-            </div>
-          )}
-
-          {stegoSkipped && (
-            <div className="status-message info">
-              <Info size={16} />
-              <span>Payload exceeded image steganography limits (&gt;10 MB), encrypted directly with AES-256-GCM.</span>
-            </div>
-          )}
-
-          <div className="file-meta">
-            <div className="meta-item">
-              <label>Files</label>
-              <span>{result.fileCount} file(s)</span>
-            </div>
-            <div className="meta-item">
-              <label>Total Size</label>
-              <span>{formatBytes(result.originalSize)}</span>
-            </div>
-            <div className="meta-item">
-              <label>Downloads</label>
-              <span>{result.maxDownloads === 0 ? 'Unlimited' : result.maxDownloads === 1 ? '1 (Burn on read)' : `${result.maxDownloads} downloads`}</span>
-            </div>
-            <div className="meta-item">
-              <label>Expires In</label>
-              <span>{formatExpiryLabel(expiryHours)}</span>
-            </div>
-          </div>
-
-          {result.isBurn && (
-            <div className="burn-banner">
-              <Flame size={20} className="burn-icon" />
-              <div>
-                <strong className="burn-title">Burn-on-Read Active</strong>
-                <span className="burn-copy">
-                  Permanently deletes from server immediately after the recipient downloads.
-                </span>
-              </div>
-            </div>
-          )}
-
-          <div className="crypto-code-box">
-            <label className="crypto-code-label--success"><Key size={14} /> Transfer Code</label>
-            <div className="crypto-code-text">{result.transferCode}</div>
-          </div>
-
-          {shareUrl && (
-            <div className="qr-code-box animate-in">
-              <div className="qr-heading">
-                <strong className="qr-heading-title">Scan QR Code to Download</strong>
-                <span className="badge badge-primary">
-                  Tokens: {refreshCount}/{MAX_REFRESHES}
-                </span>
-              </div>
-
-              <div className="qr-code-wrapper">
-                <QRCodeSVG value={shareUrl} size={150} level="M" includeMargin={false} />
-              </div>
-
-              <div>
-                {!refreshLimitReached && (
-                  <button
-                    onClick={refreshQRToken}
-                    disabled={isRefreshingToken}
-                    className="btn btn-secondary btn-sm refresh-button"
-                  >
-                    <RefreshCw size={13} className={isRefreshingToken ? 'spin' : ''} /> Refresh QR Token
-                  </button>
-                )}
-
-                {refreshLimitReached && (
-                  <div className="limit-error">
-                    QR token refresh limit reached (5/5).
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="share-actions">
-            <button className="btn btn-primary btn-lg full-width" onClick={handleCopyCode}>
-              {copied ? <><Check size={18} /> Code Copied to Clipboard!</> : <><Copy size={18} /> Copy Transfer Code</>}
-            </button>
-          </div>
-
-          <button className="btn btn-secondary button-block" onClick={handleClearAll}>
-            <Upload size={15} /> Send Another Transfer
-          </button>
-          {result.ownerToken && (
-            <button
-              onClick={async () => {
-                const ok = await cancelTransfer();
-                if (ok) handleClearAll();
-              }}
-              className="btn btn-secondary button-block button-block-danger"
-            >
-              <Trash2 size={15} /> Cancel &amp; Delete This Transfer
-            </button>
-          )}
-        </div>
-      )}
+      <ShareResultCard
+        result={result}
+        shareUrl={shareUrl}
+        useP2P={useP2P}
+        p2pState={p2pState}
+        p2pStatus={p2pStatus}
+        stegoSkipped={stegoSkipped}
+        expiryHours={expiryHours}
+        copied={copied}
+        refreshCount={refreshCount}
+        isRefreshingToken={isRefreshingToken}
+        refreshLimitReached={refreshLimitReached}
+        onRefreshQRToken={refreshQRToken}
+        onCopyCode={handleCopyCode}
+        onClearAll={handleClearAll}
+        onCancelTransfer={async () => {
+          const ok = await cancelTransfer();
+          if (ok) handleClearAll();
+        }}
+      />
     </div>
   );
 }

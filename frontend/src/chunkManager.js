@@ -1,23 +1,25 @@
 /**
- * FileShare Stream & Batch Chunk Manager
+ * FileShare Stream & Chunk Manager with Smart Transfer Optimization
  * High-performance, memory-safe streaming engine.
- * 
+ *
  * Specifications:
- * - 256 KB chunk size (262,144 bytes)
- * - 8 chunks grouped into 2 MB batches
- * - AES-256-GCM batch encryption with unique counter IVs
- * - Streaming disk write via File System Access API (showSaveFilePicker)
- * - Automatic retry and missing chunk detection
- * - Final end-to-end SHA-256 verification
+ * - Dynamic Smart chunk size (256 KB up to 3.25 MB) based on SmartTransferOptimizer
+ * - AES-256-GCM chunk/batch encryption with unique counter IVs (getChunkIV)
+ * - Direct disk write via File System Access API (showSaveFilePicker)
+ * - Failed chunk recovery with per-chunk retry without full-file restarts
+ * - WebRTC backpressure coordination and in-flight chunk parallelism
+ * - Resume support: tracks verified chunks and retransmits missing chunks
+ * - Final end-to-end SHA-256 integrity verification
  */
 
 import { encryptChunkData, decryptChunkData, deriveKey } from './crypto.js';
 import { hexToBytes } from './hexUtils.js';
+import { SmartTransferOptimizer, MAX_FILE_SIZE_BYTES } from './services/smartTransferOptimizer.js';
 
-export const CHUNK_SIZE = 256 * 1024; // 256 KB per chunk
-export const BATCH_CHUNKS_COUNT = 8;   // 8 chunks per batch
-export const BATCH_SIZE = CHUNK_SIZE * BATCH_CHUNKS_COUNT; // 2 MB per batch
-export const MAX_TOTAL_TRANSFER_SIZE = 1 * 1024 * 1024 * 1024; // 1 GB
+export const CHUNK_SIZE = 256 * 1024; // 256 KB default baseline chunk
+export const BATCH_CHUNKS_COUNT = 8;   // Baseline batch count
+export const BATCH_SIZE = CHUNK_SIZE * BATCH_CHUNKS_COUNT; // 2 MB baseline batch
+export const MAX_TOTAL_TRANSFER_SIZE = MAX_FILE_SIZE_BYTES; // 1 GB
 
 /**
  * Compute SHA-256 checksum of an ArrayBuffer or Uint8Array
@@ -29,28 +31,50 @@ export async function computeSHA256(data) {
 }
 
 /**
- * Calculate total batches and chunks for a given file size
+ * Calculate transfer plan dynamically using SmartTransferOptimizer or custom override
  */
-export function calculateTransferPlan(fileSize) {
-  const totalChunks = Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
-  const totalBatches = Math.max(1, Math.ceil(totalChunks / BATCH_CHUNKS_COUNT));
+export function calculateTransferPlan(fileSize, customChunkSize = null, customMaxParallelism = null) {
+  const size = Math.max(0, fileSize || 0);
+  const smartTier = SmartTransferOptimizer.getTier(size);
+
+  const effectiveChunkSize = customChunkSize || smartTier.chunkSize || CHUNK_SIZE;
+  const maxParallelism = customMaxParallelism || smartTier.maxParallelism || 1;
+  const totalChunks = Math.max(1, Math.ceil(size / effectiveChunkSize));
+  const chunksPerBatch = Math.max(1, Math.min(BATCH_CHUNKS_COUNT, Math.ceil((2 * 1024 * 1024) / effectiveChunkSize)));
+  const totalBatches = Math.max(1, Math.ceil(totalChunks / chunksPerBatch));
+
   return {
-    fileSize,
-    chunkSize: CHUNK_SIZE,
-    batchSize: BATCH_SIZE,
-    chunksPerBatch: BATCH_CHUNKS_COUNT,
+    fileSize: size,
+    chunkSize: effectiveChunkSize,
+    batchSize: effectiveChunkSize * chunksPerBatch,
+    chunksPerBatch,
     totalChunks,
-    totalBatches
+    totalBatches,
+    mode: smartTier.mode,
+    bufferLevel: smartTier.bufferLevel,
+    bufferThreshold: smartTier.bufferThreshold,
+    maxParallelism,
+    isSmartOptimized: !customChunkSize
   };
 }
 
 /**
- * Stream & Batch Sender Engine
- * Streams file from disk via File.slice() in 256 KB chunks, groups into 8-chunk (2 MB) batches,
- * encrypts each batch, and yields them sequentially without accumulating full files in RAM.
+ * Stream & Chunk Sender Engine
+ * Streams file from disk via File.slice() with zero whole-file memory accumulation.
+ * Handles per-chunk encryption, metadata tracking, and single-chunk retry.
  */
 export class StreamBatchSender {
-  constructor({ file, key, baseIV, fileId, transferId, onProgress, onStatus }) {
+  constructor({
+    file,
+    key,
+    baseIV,
+    fileId,
+    transferId,
+    chunkSize = null,
+    maxParallelism = null,
+    onProgress,
+    onStatus
+  }) {
     this.file = file;
     this.key = key;
     this.baseIV = baseIV;
@@ -59,11 +83,17 @@ export class StreamBatchSender {
     this.onProgress = onProgress;
     this.onStatus = onStatus;
 
-    this.plan = calculateTransferPlan(file.size);
+    this.plan = calculateTransferPlan(file.size, chunkSize, maxParallelism);
     this.isCancelled = false;
     this.isPaused = false;
     this.currentBatchIndex = 0;
     this.currentChunkIndex = 0;
+
+    // Per-chunk status tracker: chunkIndex -> { status: 'pending'|'sent'|'verified'|'failed', retries: 0 }
+    this.chunkStatus = new Map();
+    for (let c = 0; c < this.plan.totalChunks; c++) {
+      this.chunkStatus.set(c, { status: 'pending', retries: 0 });
+    }
   }
 
   cancel() {
@@ -82,24 +112,66 @@ export class StreamBatchSender {
   }
 
   /**
-   * Read and build a single 256 KB chunk slice
+   * Read a single chunk slice from file via File.slice()
    */
   async readChunk(chunkIndex) {
-    const start = chunkIndex * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, this.file.size);
+    const start = chunkIndex * this.plan.chunkSize;
+    const end = Math.min(start + this.plan.chunkSize, this.file.size);
     const sliceBlob = this.file.slice(start, end);
     const sliceBuffer = await sliceBlob.arrayBuffer();
     return new Uint8Array(sliceBuffer);
   }
 
   /**
-   * Process a single batch (8 chunks = 2 MB), encrypt, and return packaged batch
+   * Process and encrypt an individual chunk with complete metadata
+   */
+  async processChunk(chunkIndex) {
+    if (this.isCancelled) throw new Error('Transfer cancelled');
+
+    const rawChunk = await this.readChunk(chunkIndex);
+    const rawChecksum = await computeSHA256(rawChunk);
+    const encryptedChunk = await encryptChunkData(rawChunk.buffer, this.key, this.baseIV, chunkIndex);
+    const encryptedChecksum = await computeSHA256(encryptedChunk);
+
+    return {
+      transferId: this.transferId,
+      fileId: this.fileId,
+      fileName: this.file.name,
+      fileSize: this.file.size,
+      chunkIndex,
+      totalChunks: this.plan.totalChunks,
+      chunkSize: rawChunk.byteLength,
+      mimeType: this.file.type || 'application/octet-stream',
+      checksum: rawChecksum,
+      encryptedChecksum,
+      data: encryptedChunk
+    };
+  }
+
+  /**
+   * Retransmit a single failed chunk without full file restart
+   */
+  async retransmitChunk(chunkIndex) {
+    const status = this.chunkStatus.get(chunkIndex) || { status: 'failed', retries: 0 };
+    status.retries += 1;
+    if (status.retries > 5) {
+      throw new Error(`Chunk ${chunkIndex} exceeded maximum retry limit (5 retries).`);
+    }
+    status.status = 'retrying';
+    this.chunkStatus.set(chunkIndex, status);
+
+    this.onStatus?.(`Retransmitting chunk ${chunkIndex + 1}/${this.plan.totalChunks} (Attempt ${status.retries})...`);
+    return await this.processChunk(chunkIndex);
+  }
+
+  /**
+   * Process a single batch of chunks (for batch pipeline compatibility)
    */
   async processBatch(batchIndex) {
     if (this.isCancelled) throw new Error('Transfer cancelled');
 
-    const startChunk = batchIndex * BATCH_CHUNKS_COUNT;
-    const endChunk = Math.min(startChunk + BATCH_CHUNKS_COUNT, this.plan.totalChunks);
+    const startChunk = batchIndex * this.plan.chunksPerBatch;
+    const endChunk = Math.min(startChunk + this.plan.chunksPerBatch, this.plan.totalChunks);
     const chunkPromises = [];
 
     for (let i = startChunk; i < endChunk; i++) {
@@ -109,7 +181,6 @@ export class StreamBatchSender {
     const chunks = await Promise.all(chunkPromises);
     const totalRawBytes = chunks.reduce((acc, c) => acc + c.byteLength, 0);
 
-    // Concatenate chunks for batch encryption
     const batchRawBuffer = new Uint8Array(totalRawBytes);
     let offset = 0;
     const chunkChecksums = [];
@@ -121,7 +192,6 @@ export class StreamBatchSender {
       offset += chunk.byteLength;
     }
 
-    // Encrypt batch with batch-derived counter IV
     const encryptedBatch = await encryptChunkData(batchRawBuffer.buffer, this.key, this.baseIV, batchIndex);
     const batchChecksum = await computeSHA256(encryptedBatch);
 
@@ -135,6 +205,7 @@ export class StreamBatchSender {
       startChunk,
       endChunk: endChunk - 1,
       totalChunks: this.plan.totalChunks,
+      chunkSize: this.plan.chunkSize,
       chunkChecksums,
       batchChecksum,
       data: encryptedBatch
@@ -142,7 +213,7 @@ export class StreamBatchSender {
   }
 
   /**
-   * Stream all batches with progress notifications
+   * Stream all batches/chunks with progress notifications
    */
   async *streamBatches() {
     for (let b = 0; b < this.plan.totalBatches; b++) {
@@ -153,9 +224,9 @@ export class StreamBatchSender {
 
       const batch = await this.processBatch(b);
       this.currentBatchIndex = b + 1;
-      this.currentChunkIndex = Math.min((b + 1) * BATCH_CHUNKS_COUNT, this.plan.totalChunks);
+      this.currentChunkIndex = Math.min((b + 1) * this.plan.chunksPerBatch, this.plan.totalChunks);
 
-      const bytesProcessed = Math.min((b + 1) * BATCH_SIZE, this.file.size);
+      const bytesProcessed = Math.min((b + 1) * this.plan.batchSize, this.file.size);
       const percent = Math.min(100, Math.round((bytesProcessed / this.file.size) * 100));
 
       this.onProgress?.({
@@ -165,7 +236,10 @@ export class StreamBatchSender {
         currentChunk: this.currentChunkIndex,
         totalChunks: this.plan.totalChunks,
         bytesProcessed,
-        totalBytes: this.file.size
+        totalBytes: this.file.size,
+        chunkSize: this.plan.chunkSize,
+        mode: this.plan.mode,
+        isSmartOptimized: this.plan.isSmartOptimized
       });
 
       yield batch;
@@ -174,8 +248,8 @@ export class StreamBatchSender {
 }
 
 /**
- * Stream & Batch Receiver Engine
- * Receives chunks and batches, validates checksums, decrypts batches in stream,
+ * Stream & Chunk Receiver Engine
+ * Receives chunks and batches, validates checksums, decrypts in stream,
  * and streams decrypted data directly to disk via File System Access API.
  */
 export class StreamBatchReceiver {
@@ -188,8 +262,9 @@ export class StreamBatchReceiver {
     this.onComplete = onComplete;
     this.onError = onError;
 
-    this.plan = calculateTransferPlan(fileMeta.size || fileMeta.original_size || 0);
-    this.receivedBatches = new Map(); // batchIndex -> encryptedUint8Array
+    const size = fileMeta.size || fileMeta.original_size || 0;
+    this.plan = calculateTransferPlan(size, fileMeta.chunkSize);
+    this.receivedBatches = new Map();
     this.receivedChunksBitmask = new Set();
     this.isCancelled = false;
     this.fileHandle = null;
@@ -218,8 +293,7 @@ export class StreamBatchReceiver {
         this.hasDirectDiskWrite = true;
         this.onStatus?.('Direct disk stream initialized.');
         return true;
-      } catch (err) {
-        // User cancelled picker or permission denied; fallback to browser memory stream
+      } catch (_) {
         this.hasDirectDiskWrite = false;
         return false;
       }
@@ -229,7 +303,7 @@ export class StreamBatchReceiver {
   }
 
   /**
-   * Accept an incoming batch packet, decrypt, and write directly to disk/stream
+   * Accept an incoming batch packet, verify checksum, decrypt, and write directly to disk
    */
   async acceptBatch(batchMeta, encryptedData) {
     if (this.isCancelled) return { cancelled: true };
@@ -267,7 +341,7 @@ export class StreamBatchReceiver {
     this.bytesWritten += decryptedBatch.byteLength;
 
     // Update Progress
-    const totalBytes = this.fileMeta.size || this.fileMeta.original_size || (this.plan.totalBatches * BATCH_SIZE);
+    const totalBytes = this.fileMeta.size || this.fileMeta.original_size || (this.plan.totalBatches * this.plan.batchSize);
     const percent = Math.min(100, Math.round((this.bytesWritten / totalBytes) * 100));
 
     this.onProgress?.({
@@ -290,7 +364,68 @@ export class StreamBatchReceiver {
   }
 
   /**
-   * Identify any missing chunks/batches for selective retransmission
+   * Accept single chunk directly
+   */
+  async acceptChunk(chunkMeta, encryptedData) {
+    if (this.isCancelled) return { cancelled: true };
+
+    const { chunkIndex, totalChunks, checksum, encryptedChecksum } = chunkMeta;
+
+    // Verify encrypted checksum
+    if (encryptedChecksum) {
+      const computedEncrypted = await computeSHA256(encryptedData);
+      if (computedEncrypted !== encryptedChecksum) {
+        return { valid: false, retry: true, chunkIndex };
+      }
+    }
+
+    // Decrypt chunk
+    const decryptedChunk = await decryptChunkData(
+      encryptedData.buffer.slice(encryptedData.byteOffset, encryptedData.byteOffset + encryptedData.byteLength),
+      this.key,
+      this.baseIV,
+      chunkIndex
+    );
+
+    // Verify raw checksum if provided
+    if (checksum) {
+      const computedRaw = await computeSHA256(decryptedChunk);
+      if (computedRaw !== checksum) {
+        return { valid: false, retry: true, chunkIndex };
+      }
+    }
+
+    // Write to disk stream or fallback buffer
+    if (this.hasDirectDiskWrite && this.writableStream) {
+      await this.writableStream.write(decryptedChunk);
+    } else {
+      this.fallbackBuffers.push(decryptedChunk);
+    }
+
+    this.receivedChunksBitmask.add(chunkIndex);
+    this.bytesWritten += decryptedChunk.byteLength;
+
+    const totalBytes = this.fileMeta.size || this.fileMeta.original_size || (totalChunks * (this.plan.chunkSize || CHUNK_SIZE));
+    const percent = Math.min(100, Math.round((this.bytesWritten / totalBytes) * 100));
+
+    this.onProgress?.({
+      percent,
+      currentChunk: this.receivedChunksBitmask.size,
+      totalChunks,
+      bytesWritten: this.bytesWritten,
+      totalBytes,
+      hasDirectDiskWrite: this.hasDirectDiskWrite
+    });
+
+    if (this.receivedChunksBitmask.size >= totalChunks) {
+      await this.finalizeTransfer();
+    }
+
+    return { valid: true, retry: false, completed: this.receivedChunksBitmask.size >= totalChunks };
+  }
+
+  /**
+   * Identify missing chunks/batches for selective retransmission & resume support
    */
   getMissingBatches() {
     const missing = [];
@@ -302,8 +437,18 @@ export class StreamBatchReceiver {
     return missing;
   }
 
+  getMissingChunks() {
+    const missing = [];
+    for (let c = 0; c < this.plan.totalChunks; c++) {
+      if (!this.receivedChunksBitmask.has(c)) {
+        missing.push(c);
+      }
+    }
+    return missing;
+  }
+
   /**
-   * Finalize transfer, verify end-to-end SHA-256, and close streams
+   * Finalize transfer, verify end-to-end SHA-256, and close disk streams
    */
   async finalizeTransfer() {
     await this.closeDiskStream();
@@ -319,7 +464,6 @@ export class StreamBatchReceiver {
       finalSHA256 = await computeSHA256(new Uint8Array(fullBuffer));
     }
 
-    // Verify SHA-256 against expected hash if provided
     if (this.fileMeta.sha256 && finalSHA256 && this.fileMeta.sha256 !== finalSHA256) {
       this.onError?.('Final SHA-256 integrity verification failed.');
       return;

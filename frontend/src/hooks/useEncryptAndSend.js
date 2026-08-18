@@ -1,11 +1,12 @@
 /**
  * Custom hook for encryption, steganography embedding, upload transmission, and QR refresh.
- * (LLD: Transfer Manager - Sender Hook)
+ * (LLD: Transfer Manager - Sender Hook) with Smart Transfer Optimization integration.
  */
 
 import { useState, useCallback } from 'react';
 import { encryptFile, createTransferCode, buildChunkMarker, computeAccessProof } from '../crypto';
 import { packFiles } from '../fileManager';
+import { SmartTransferOptimizer } from '../services/smartTransferOptimizer';
 import { embedPayloadInImage } from '../steganography';
 import { api } from '../services/api';
 import { createProgressThrottle } from '../services/progress';
@@ -24,12 +25,57 @@ export function useEncryptAndSend(stateMachine) {
   const [refreshLimitReached, setRefreshLimitReached] = useState(false);
   const [error, setError] = useState(null);
 
-  const sendFiles = useCallback(async ({ files, useSteganography, burnOnRead, expiryHours, maxDownloads = 10, totalSelectedSize }) => {
+  const sendFiles = useCallback(async ({
+    files,
+    useSteganography,
+    burnOnRead,
+    expiryHours,
+    maxDownloads = 10,
+    totalSelectedSize,
+    customSettings = null
+  }) => {
     if (!files || files.length === 0) return;
 
     stateMachine?.transitionTo(TransferState.PREPARE);
     setError(null);
-    setProgress({ stage: 'reading', percent: 2 });
+
+    const smartAnalysis = SmartTransferOptimizer.analyzeBatch(files);
+    const primarySmart = files.length === 1 ? SmartTransferOptimizer.analyzeFile(files[0]) : null;
+
+    let startTime = Date.now();
+    let lastBytes = 0;
+    let lastTime = Date.now();
+
+    const updateProgressWithMetrics = (stage, percent, currentBytes = null) => {
+      const now = Date.now();
+      const bytes = currentBytes !== null ? currentBytes : Math.round((percent / 100) * totalSelectedSize);
+      const timeDelta = (now - lastTime) / 1000;
+      let speed = 0;
+
+      if (timeDelta >= 0.3) {
+        speed = Math.round((bytes - lastBytes) / timeDelta);
+        lastBytes = bytes;
+        lastTime = now;
+      }
+
+      const remainingBytes = Math.max(0, totalSelectedSize - bytes);
+      const etaSeconds = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
+
+      return {
+        stage,
+        percent,
+        transferredBytes: bytes,
+        totalBytes: totalSelectedSize,
+        speedBytesPerSec: speed,
+        etaSeconds,
+        mode: primarySmart ? primarySmart.mode : 'Standard',
+        isSmartOptimized: !customSettings,
+        fileCount: files.length,
+        currentFileName: files[0]?.name || 'transfer'
+      };
+    };
+
+    setProgress(updateProgressWithMetrics('reading', 2, 0));
     const throttle = createProgressThrottle(setProgress);
 
     try {
@@ -39,14 +85,21 @@ export function useEncryptAndSend(stateMachine) {
       const packaged = await packFiles(files);
       const targetBlob = packaged.blob;
 
-      const encrypted = await encryptFile(targetBlob, (p) => throttle.push(p));
+      const encrypted = await encryptFile(targetBlob, (p) => {
+        const prog = updateProgressWithMetrics(
+          p.stage,
+          Math.min(85, p.percent || 10),
+          Math.round(((p.percent || 10) / 100) * totalSelectedSize)
+        );
+        throttle.push(prog);
+      });
       throttle.flush();
 
       let uploadBlob = encrypted.encryptedBlob;
       let uploadFileName = packaged.name + '.encrypted';
 
       if (useSteganography) {
-        throttle.push({ stage: 'steganography', percent: 75 });
+        throttle.push(updateProgressWithMetrics('steganography', 75));
         if (encrypted.encryptedSize > STEGO_MAX_PAYLOAD_BYTES) {
           setStegoSkipped(true);
         } else {
@@ -63,7 +116,7 @@ export function useEncryptAndSend(stateMachine) {
       }
 
       stateMachine?.transitionTo(TransferState.CREATING_TRANSFER);
-      throttle.push({ stage: 'uploading', percent: 88 });
+      throttle.push(updateProgressWithMetrics('uploading', 88));
 
       const effectiveMaxDownloads = burnOnRead ? 1 : Number(maxDownloads);
 
@@ -78,12 +131,12 @@ export function useEncryptAndSend(stateMachine) {
       formData.append('burn_on_read', burnOnRead ? '1' : '0');
       formData.append('expiry_hours', expiryHours.toString());
       formData.append('sharing_mode', useSteganography && burnOnRead ? 'both' : useSteganography ? 'steganography' : burnOnRead ? 'burn_on_read' : 'standard');
-      // Server-stored format marker for chunked ciphertext
       formData.append('checksum', buildChunkMarker(encrypted.chunked));
       formData.append('access_hash', await computeAccessProof(encrypted.password));
 
       const data = await api.upload(formData, (p) => {
-        throttle.push({ stage: 'uploading', percent: 88 + Math.round(p.percent * 0.12) });
+        const uploadPercent = 88 + Math.round(p.percent * 0.12);
+        throttle.push(updateProgressWithMetrics('uploading', uploadPercent, Math.round((uploadPercent / 100) * totalSelectedSize)));
       });
 
       const transferCode = createTransferCode(data.file_id, encrypted.password);
@@ -94,9 +147,6 @@ export function useEncryptAndSend(stateMachine) {
         } catch (_) {}
       }
 
-      // The key stays in the URL fragment: browsers never send fragments to servers,
-      // proxies, analytics, or access logs. The visible transfer code remains available
-      // for people who prefer copying it into a chat.
       const shareReference = `FS-${data.file_id.toUpperCase()}`;
       let bestUrl = `${window.location.origin}/download?code=${encodeURIComponent(shareReference)}#key=${encodeURIComponent(encrypted.password)}`;
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -117,7 +167,7 @@ export function useEncryptAndSend(stateMachine) {
       setRefreshCount(0);
       setRefreshLimitReached(false);
       stateMachine?.transitionTo(TransferState.WAITING_FOR_RECEIVER);
-      throttle.push({ stage: 'complete', percent: 100 });
+      throttle.push(updateProgressWithMetrics('complete', 100, totalSelectedSize));
       throttle.flush();
 
       setResult({
@@ -133,6 +183,8 @@ export function useEncryptAndSend(stateMachine) {
         maxDownloads: effectiveMaxDownloads,
         expiryHours,
         ownerToken: data.owner_token || null,
+        smartOptimization: primarySmart || smartAnalysis,
+        isSmartOptimized: !customSettings
       });
     } catch (err) {
       const status = err.status;
