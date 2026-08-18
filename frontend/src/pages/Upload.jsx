@@ -405,7 +405,7 @@ function UploadPage() {
                           <span className="badge badge-amber">ONE-TIME USE</span>
                         </div>
                         <span className="option-card__description">
-                          Permanently deletes the file from the server immediately after the first download. Best for sensitive passwords, credentials, and private documents.
+                          <strong>Best for:</strong> .pdf, .docx, .xlsx (Salary slips, bank statements, contracts). Permanently deleted from server 0.1s after first download.
                         </span>
                       </div>
                     </div>
@@ -435,11 +435,11 @@ function UploadPage() {
                       </div>
                       <div>
                         <div className="option-card__title-row">
-                          <strong className="option-card__title">Image Steganography Disguise</strong>
-                          <span className="badge badge-emerald">STEALTH</span>
+                          <strong className="option-card__title">Steganography Image Vault</strong>
+                          <span className="badge badge-emerald">STEALTH &lt;10MB</span>
                         </div>
                         <span className="option-card__description">
-                          Disguises encrypted file bytes inside harmless PNG image pixels. Network observers and firewalls only see an innocent photo upload.
+                          <strong>Best for:</strong> .txt, .env, .pdf, .png (Passwords, crypto keys, ID cards). Disguises encrypted bytes inside normal PNG image pixels.
                         </span>
                       </div>
                     </div>
@@ -470,10 +470,10 @@ function UploadPage() {
                       <div>
                         <div className="option-card__title-row">
                           <strong className="option-card__title">Direct P2P Transfer (WebRTC)</strong>
-                          <span className="badge badge-primary">REAL-TIME</span>
+                          <span className="badge badge-primary">FAST STREAM &gt;500MB</span>
                         </div>
                         <span className="option-card__description">
-                          Streams files directly between both browsers in real time when sender and receiver are active simultaneously. REST transfer remains the default fallback.
+                          <strong>Best for:</strong> .mp4, .zip, .iso, .psd (Videos, large archives). Streams laptop-to-laptop / phone-to-laptop without server storage.
                         </span>
                       </div>
                     </div>
