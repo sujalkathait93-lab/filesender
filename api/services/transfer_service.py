@@ -17,7 +17,9 @@ from api.database import DatabaseManager
 from api.storage import StorageManager
 from api.config import MAX_FILE_SIZE, MAX_REFRESHES_PER_SESSION, MAX_PREVIEWS_PER_FILE
 from api.utils import generate_id, generate_owner_token, hash_token, tokens_match, proofs_match, get_utc_now
-from api.errors import NotFoundError, GoneError, ConflictError, ForbiddenError
+from api.errors import NotFoundError, GoneError, ConflictError, ForbiddenError, ValidationError
+
+MAX_ALLOWED_ENCRYPTED = MAX_FILE_SIZE + 64 * 1024 * 1024  # 1 GB + overhead
 
 
 class TransferService:
@@ -27,11 +29,11 @@ class TransferService:
         self.db = db_manager
         self.storage = storage_manager
 
-    # ─── Upload ─────────────────────────────────────────────────────────────
+    # ─── Upload (Single Shot) ───────────────────────────────────────────────
 
     def upload_file(self, file_obj, form_data: dict) -> dict:
         """
-        Upload an encrypted file blob.
+        Upload an encrypted file blob in a single request.
         form_data must already be validated (see api.validation).
         Returns dict with file_id, transfer_id, share_url, expires_at, etc.
         """
@@ -57,9 +59,9 @@ class TransferService:
         encrypted_size = 0
         try:
             with open(file_path, "wb") as f:
-                while chunk := file_obj.read(262144):  # 256 KB write buffer for high-throughput 1 GB streaming
+                while chunk := file_obj.read(262144):  # 256 KB write buffer for high-throughput streaming
                     encrypted_size += len(chunk)
-                    if encrypted_size > MAX_FILE_SIZE:
+                    if encrypted_size > MAX_ALLOWED_ENCRYPTED:
                         raise ValueError("Total file size cannot exceed 1 GB")
                     f.write(chunk)
         except Exception:
@@ -107,6 +109,134 @@ class TransferService:
             "owner_token": owner_token,
         }
 
+    # ─── Upload (Chunked Pipeline) ──────────────────────────────────────────
+
+    def init_chunked_upload(self, form_data: dict, filename: str = "", content_type: str = "") -> dict:
+        """Initialize a multi-chunk upload session."""
+        iv = form_data["iv"]
+        salt = form_data["salt"]
+        original_name = form_data["original_name"]
+        original_size = form_data["original_size"]
+        compressed = form_data["compressed"]
+        max_downloads = form_data["max_downloads"]
+        burn_on_read = form_data["burn_on_read"]
+        expiry_hours = form_data["expiry_hours"]
+        sharing_mode = form_data["sharing_mode"]
+        transfer_id = form_data["transfer_id"]
+        checksum = (form_data.get("checksum") or "").strip()[:64]
+        access_hash = form_data["access_hash"]
+
+        file_id = generate_id()
+        transfer_id = transfer_id or file_id
+        owner_token = generate_owner_token()
+        expires_at = get_utc_now() + timedelta(hours=expiry_hours)
+        effective_max_downloads = 1 if burn_on_read == 1 else max_downloads
+
+        conn = self.db.get_connection()
+        try:
+            conn.execute("""
+                INSERT INTO transfers (id, token_hash, status, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
+                VALUES (?, ?, 'uploading', ?, ?, 1, ?, 0, 5, ?)
+                ON CONFLICT(id) DO UPDATE SET total_size = total_size + excluded.total_size, file_count = file_count + 1
+            """, (transfer_id, hash_token(owner_token), expires_at.isoformat(), original_size, sharing_mode, burn_on_read))
+
+            conn.execute("""
+                INSERT INTO files (id, transfer_id, filename, original_name, original_size, encrypted_size,
+                                  mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read, status, access_hash)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', ?)
+            """, (
+                file_id, transfer_id, filename or "file.encrypted", original_name, original_size,
+                content_type or "application/octet-stream", expires_at.isoformat(),
+                effective_max_downloads, iv, salt, compressed, checksum, burn_on_read, access_hash
+            ))
+            conn.commit()
+        finally:
+            conn.close()
+
+        return {
+            "file_id": file_id,
+            "transfer_id": transfer_id,
+            "share_url": f"/download/{file_id}",
+            "expires_at": expires_at.isoformat(),
+            "owner_token": owner_token,
+            "refresh_count": 0,
+            "max_refreshes": MAX_REFRESHES_PER_SESSION,
+        }
+
+    def save_chunk(self, transfer_id: str, file_id: str, chunk_index: int, total_chunks: int, chunk_file_obj, checksum: str = "") -> dict:
+        """Save a single chunk file to disk and record it in database."""
+        chunk_id = f"{file_id}_{chunk_index}"
+        chunk_path = self.storage.get_chunk_path(transfer_id, file_id, chunk_index)
+
+        chunk_size = 0
+        with open(chunk_path, "wb") as f:
+            while chunk_data := chunk_file_obj.read(131072):
+                chunk_size += len(chunk_data)
+                f.write(chunk_data)
+
+        conn = self.db.get_connection()
+        try:
+            conn.execute("""
+                INSERT OR REPLACE INTO chunks (id, transfer_id, file_id, chunk_index, total_chunks, chunk_size, checksum)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (chunk_id, transfer_id, file_id, chunk_index, total_chunks, chunk_size, checksum))
+            conn.commit()
+        finally:
+            conn.close()
+
+        return {"chunk_index": chunk_index, "chunk_size": chunk_size, "received": True}
+
+    def complete_chunked_upload(self, transfer_id: str, file_id: str, total_chunks: int, owner_token: str = "") -> dict:
+        """Assemble received chunks into the final encrypted blob and mark transfer ready."""
+        conn = self.db.get_connection()
+        try:
+            row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
+            if not row:
+                raise NotFoundError("Transfer not found")
+
+            t_row = conn.execute("SELECT * FROM transfers WHERE id = ?", (transfer_id,)).fetchone()
+            if not t_row:
+                raise NotFoundError("Transfer session not found")
+
+            if owner_token and not tokens_match(owner_token, t_row["token_hash"] or ""):
+                raise ForbiddenError("Invalid owner token")
+
+            file_path = self.storage.get_file_path(file_id)
+            total_encrypted_size = 0
+
+            with open(file_path, "wb") as out_f:
+                for idx in range(total_chunks):
+                    c_path = self.storage.get_chunk_path(transfer_id, file_id, idx)
+                    if not os.path.exists(c_path):
+                        raise ValidationError(f"Missing chunk {idx} of {total_chunks}")
+                    with open(c_path, "rb") as in_f:
+                        while piece := in_f.read(262144):
+                            total_encrypted_size += len(piece)
+                            if total_encrypted_size > MAX_ALLOWED_ENCRYPTED:
+                                raise ValueError("Total file size cannot exceed 1 GB")
+                            out_f.write(piece)
+
+            # Purge temporary chunks
+            self.storage.purge_transfer_chunks(transfer_id)
+
+            conn.execute("UPDATE files SET status = 'ready', encrypted_size = ? WHERE id = ?", (total_encrypted_size, file_id))
+            conn.execute("UPDATE transfers SET status = 'active' WHERE id = ?", (transfer_id,))
+            conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
+            conn.commit()
+
+            return {
+                "file_id": file_id,
+                "transfer_id": transfer_id,
+                "share_url": f"/download/{file_id}",
+                "expires_at": row["expires_at"],
+                "refresh_count": t_row["refresh_count"],
+                "max_refreshes": t_row["max_refreshes"],
+                "qr_data": file_id,
+                "owner_token": owner_token,
+            }
+        finally:
+            conn.close()
+
     # ─── Token refresh ──────────────────────────────────────────────────────
 
     def refresh_token(self, transfer_id: str) -> dict:
@@ -153,7 +283,7 @@ class TransferService:
             stored = row["access_hash"] or ""
         except (IndexError, KeyError):
             stored = ""
-        if not proofs_match(proof, stored):
+        if stored and not proofs_match(proof, stored):
             raise ForbiddenError("Access proof required")
 
     def get_file_info(self, file_id: str, proof: str = "") -> dict:

@@ -1,37 +1,26 @@
 /**
- * SecureShare API Service Layer
- * All server communication goes through this module — pages and hooks never
- * call fetch() directly. Keeps error handling and endpoint URLs in one place.
+ * API client for the Flask backend.
+ * Uses native fetch and XMLHttpRequest for upload progress tracking.
+ * Includes intelligent chunked upload streaming to bypass serverless & proxy size limits.
  */
 
-const rawApiUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) ? String(import.meta.env.VITE_API_URL).trim() : '';
-const API_URL = rawApiUrl ? rawApiUrl.replace(/\/+$/, '') : (typeof window !== 'undefined' ? window.location.origin : '');
+const API_URL = import.meta.env.VITE_API_URL || '';
+const CHUNK_UPLOAD_SIZE = 2.5 * 1024 * 1024; // 2.5 MB safe slices (well within Vercel's 4.5 MB limit)
 
-/** Parse a JSON response; throw a readable Error on failure. */
 async function parseResponse(response) {
-  if (response.status === 204) return null;
-  const contentType = response.headers.get('content-type') || '';
-  const isJson = contentType.includes('application/json');
-  const body = isJson ? await response.json().catch(() => null) : null;
-
   if (!response.ok) {
-    const detail = body && (typeof body.detail === 'string' ? body.detail : body.error);
+    let detail = null;
+    try {
+      const json = await response.json();
+      detail = json.detail;
+    } catch (_) {}
     const err = new Error(detail || `Request failed (${response.status})`);
     err.status = response.status;
-    err.body = body;
     throw err;
   }
-
-  if (!isJson) {
-    const err = new Error('The server returned an unexpected response. Check that the API URL is public and configured correctly.');
-    err.status = response.status;
-    throw err;
-  }
-
-  return body;
+  return response.json();
 }
 
-/** Simple GET returning parsed JSON. */
 async function getJson(path, headers = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { Accept: 'application/json', ...headers },
@@ -39,15 +28,20 @@ async function getJson(path, headers = {}) {
   return parseResponse(response);
 }
 
-/** POST returning parsed JSON. */
-async function postJson(path) {
-  const response = await fetch(`${API_URL}${path}`, { method: 'POST' });
+async function postJson(path, data = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
   return parseResponse(response);
 }
 
 /**
- * Upload a FormData body with real upload progress via XMLHttpRequest
- * (fetch does not expose upload progress).
+ * Upload a FormData body with real upload progress via XMLHttpRequest.
  */
 function uploadFormData(path, formData, onProgress) {
   return new Promise((resolve, reject) => {
@@ -67,7 +61,7 @@ function uploadFormData(path, formData, onProgress) {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(body);
         } else if (!isRetry && (xhr.status === 405 || xhr.status === 404)) {
-          // Automatic fallback if proxy or serverless rewrite changed the prefix
+          // Automatic fallback if proxy or serverless rewrite changed prefix
           const altPath = urlPath.startsWith('/api') ? urlPath.replace(/^\/api/, '') : `/api${urlPath}`;
           doUpload(altPath, true);
         } else {
@@ -84,6 +78,82 @@ function uploadFormData(path, formData, onProgress) {
 
     doUpload(path);
   });
+}
+
+/**
+ * Upload an encrypted file blob.
+ * - Files <= 4 MB: Fast direct single-shot upload.
+ * - Files > 4 MB (up to 1 GB): Streams via 2.5 MB chunks to safely bypass
+ *   serverless function body limits (e.g. Vercel 4.5 MB) and proxy constraints.
+ */
+async function uploadFileSmart(fileBlob, metadata, onProgress) {
+  if (fileBlob.size <= 4 * 1024 * 1024) {
+    const formData = new FormData();
+    formData.append('file', fileBlob, metadata.filename || 'file.encrypted');
+    for (const [k, v] of Object.entries(metadata)) {
+      if (v !== undefined && v !== null && k !== 'filename') {
+        formData.append(k, String(v));
+      }
+    }
+    return uploadFormData('/api/upload', formData, onProgress);
+  }
+
+  // Multi-chunk upload pipeline for large files
+  const totalSize = fileBlob.size;
+  const totalChunks = Math.ceil(totalSize / CHUNK_UPLOAD_SIZE);
+
+  // 1. Initialize session
+  const initRes = await postJson('/api/upload/init', {
+    ...metadata,
+    total_chunks: totalChunks,
+    original_size: metadata.original_size || totalSize
+  });
+
+  const { file_id, transfer_id, owner_token } = initRes;
+  let uploadedBytes = 0;
+
+  // 2. Upload chunks sequentially
+  for (let idx = 0; idx < totalChunks; idx++) {
+    const start = idx * CHUNK_UPLOAD_SIZE;
+    const end = Math.min(totalSize, start + CHUNK_UPLOAD_SIZE);
+    const chunkBlob = fileBlob.slice(start, end);
+
+    const chunkForm = new FormData();
+    chunkForm.append('chunk', chunkBlob, `chunk_${idx}.bin`);
+    chunkForm.append('transfer_id', transfer_id);
+    chunkForm.append('file_id', file_id);
+    chunkForm.append('chunk_index', String(idx));
+    chunkForm.append('total_chunks', String(totalChunks));
+
+    let chunkUploaded = 0;
+    await uploadFormData('/api/upload/chunk', chunkForm, (p) => {
+      chunkUploaded = p.loaded;
+      if (onProgress) {
+        const currentTotalLoaded = uploadedBytes + chunkUploaded;
+        onProgress({
+          loaded: currentTotalLoaded,
+          total: totalSize,
+          percent: Math.min(99, Math.round((currentTotalLoaded / totalSize) * 100))
+        });
+      }
+    });
+
+    uploadedBytes += (end - start);
+  }
+
+  // 3. Complete and assemble
+  const completeRes = await postJson('/api/upload/complete', {
+    transfer_id,
+    file_id,
+    total_chunks: totalChunks,
+    owner_token
+  });
+
+  if (onProgress) {
+    onProgress({ loaded: totalSize, total: totalSize, percent: 100 });
+  }
+
+  return completeRes;
 }
 
 /** Fetch the encrypted blob with progress; returns { blob, headers }. */
@@ -140,7 +210,7 @@ export const api = {
   health: () => getJson('/api/health'),
   networkInfo: () => getJson('/api/network-info'),
   stats: () => getJson('/api/stats'),
-  fileInfo: (id, proof) => getJson(`/api/file-info/${encodeURIComponent(id)}`, proof ? { 'X-Access-Proof': proof } : {}),
+  fileInfo: (id, proof) => getJson(`/api/files/${encodeURIComponent(id)}`, proof ? { 'X-Access-Proof': proof } : {}),
   refreshToken: (transferId) => postJson(`/api/transfers/${encodeURIComponent(transferId)}/token/refresh`),
   deleteFile: (id, ownerToken) => fetch(`${API_URL}/api/files/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -155,5 +225,6 @@ export const api = {
     return response.json().catch(() => ({ message: 'File deleted' }));
   }),
   upload: (formData, onProgress) => uploadFormData('/api/upload', formData, onProgress),
+  uploadSmart: uploadFileSmart,
   download: downloadBlob,
 };

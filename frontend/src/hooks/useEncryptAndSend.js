@@ -120,21 +120,22 @@ export function useEncryptAndSend(stateMachine) {
 
       const effectiveMaxDownloads = burnOnRead ? 1 : Number(maxDownloads);
 
-      const formData = new FormData();
-      formData.append('file', uploadBlob, uploadFileName);
-      formData.append('iv', encrypted.iv);
-      formData.append('salt', encrypted.salt);
-      formData.append('original_name', packaged.name);
-      formData.append('original_size', encrypted.originalSize);
-      formData.append('compressed', encrypted.compressed ? '1' : '0');
-      formData.append('max_downloads', effectiveMaxDownloads.toString());
-      formData.append('burn_on_read', burnOnRead ? '1' : '0');
-      formData.append('expiry_hours', expiryHours.toString());
-      formData.append('sharing_mode', useSteganography && burnOnRead ? 'both' : useSteganography ? 'steganography' : burnOnRead ? 'burn_on_read' : 'standard');
-      formData.append('checksum', buildChunkMarker(encrypted.chunked));
-      formData.append('access_hash', await computeAccessProof(encrypted.password));
+      const uploadMetadata = {
+        filename: uploadFileName,
+        original_name: packaged.name,
+        original_size: encrypted.originalSize,
+        iv: encrypted.iv,
+        salt: encrypted.salt,
+        compressed: encrypted.compressed ? '1' : '0',
+        max_downloads: effectiveMaxDownloads.toString(),
+        burn_on_read: burnOnRead ? '1' : '0',
+        expiry_hours: expiryHours.toString(),
+        sharing_mode: useSteganography && burnOnRead ? 'both' : useSteganography ? 'steganography' : burnOnRead ? 'burn_on_read' : 'standard',
+        checksum: buildChunkMarker(encrypted.chunked),
+        access_hash: await computeAccessProof(encrypted.password)
+      };
 
-      const data = await api.upload(formData, (p) => {
+      const data = await api.uploadSmart(uploadBlob, uploadMetadata, (p) => {
         const uploadPercent = 88 + Math.round(p.percent * 0.12);
         throttle.push(updateProgressWithMetrics('uploading', uploadPercent, Math.round((uploadPercent / 100) * totalSelectedSize)));
       });

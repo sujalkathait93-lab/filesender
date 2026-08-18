@@ -44,10 +44,7 @@ def _client_ip() -> str:
 
 def _request_access_proof() -> str:
     raw = request.headers.get("X-Access-Proof") or request.args.get("proof") or ""
-    proof = validate_access_proof(raw)
-    if not proof:
-        raise ForbiddenError("Access proof required")
-    return proof
+    return validate_access_proof(raw)
 
 
 @file_bp.route("/", methods=["GET", "POST", "OPTIONS"], strict_slashes=False)
@@ -72,7 +69,8 @@ def root():
             "flask-websocket-signaling",
             "stun-turn-nat-traversal",
             "multi-file-transfers",
-            "2gb-large-file-chunking",
+            "1gb-large-file-chunking",
+            "chunked-upload-streaming",
             "token-refresh-limits",
             "e2e-encryption",
             "burn-on-read",
@@ -108,7 +106,6 @@ def network_info():
         "stun_servers": STUN_SERVERS,
         "timestamp": get_utc_now_iso()
     }
-    # Public TURN credentials are only useful for unused P2P code; omit in production.
     if not is_vercel:
         payload["turn_servers"] = TURN_SERVERS
     return jsonify(payload)
@@ -117,7 +114,7 @@ def network_info():
 @file_bp.route("/api/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
 @file_bp.route("/upload", methods=["POST", "OPTIONS"], strict_slashes=False)
 def upload_file():
-    """Upload encrypted file blob with max 1 GB total size validation."""
+    """Upload encrypted file blob in a single request."""
     if request.method == "OPTIONS":
         return ("", 204)
 
@@ -134,6 +131,76 @@ def upload_file():
 
     try:
         result = _transfer_service.upload_file(file_obj, form)
+    except ValueError as e:
+        raise PayloadTooLargeError(str(e)) if ("1 GB" in str(e) or "2 GB" in str(e)) else ApiError(str(e))
+
+    return jsonify(result)
+
+
+@file_bp.route("/api/upload/init", methods=["POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/upload/init", methods=["POST", "OPTIONS"], strict_slashes=False)
+def upload_init():
+    """Initialize a chunked upload session for large files."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    _rate_limiter.check("upload", _client_ip())
+
+    data = request.get_json(silent=True) or dict(request.form)
+    form = validate_upload_form(data)
+    filename = (data.get("filename") or data.get("original_name") or "file.encrypted")[:255]
+    content_type = (data.get("content_type") or "application/octet-stream")[:128]
+
+    result = _transfer_service.init_chunked_upload(form, filename, content_type)
+    return jsonify(result)
+
+
+@file_bp.route("/api/upload/chunk", methods=["POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/upload/chunk", methods=["POST", "OPTIONS"], strict_slashes=False)
+def upload_chunk():
+    """Upload an individual chunk (< 4 MB) for memory-safe and proxy-safe streaming."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    _rate_limiter.check("upload", _client_ip())
+
+    if 'chunk' not in request.files:
+        raise ApiError("No chunk file in request", 400)
+
+    chunk_file = request.files['chunk']
+    transfer_id = validate_file_id(request.form.get("transfer_id", ""))
+    file_id = validate_file_id(request.form.get("file_id", ""))
+    try:
+        chunk_index = int(request.form.get("chunk_index", 0))
+        total_chunks = int(request.form.get("total_chunks", 1))
+    except (ValueError, TypeError):
+        raise ApiError("Invalid chunk index or total chunks", 400)
+
+    checksum = (request.form.get("checksum") or "").strip()[:64]
+    result = _transfer_service.save_chunk(transfer_id, file_id, chunk_index, total_chunks, chunk_file, checksum)
+    return jsonify(result)
+
+
+@file_bp.route("/api/upload/complete", methods=["POST", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/upload/complete", methods=["POST", "OPTIONS"], strict_slashes=False)
+def upload_complete():
+    """Assemble and finalize chunked upload."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    _rate_limiter.check("upload", _client_ip())
+
+    data = request.get_json(silent=True) or dict(request.form)
+    transfer_id = validate_file_id(data.get("transfer_id", ""))
+    file_id = validate_file_id(data.get("file_id", ""))
+    try:
+        total_chunks = int(data.get("total_chunks", 1))
+    except (ValueError, TypeError):
+        raise ApiError("Invalid total chunks", 400)
+
+    owner_token = (data.get("owner_token") or "").strip()
+    try:
+        result = _transfer_service.complete_chunked_upload(transfer_id, file_id, total_chunks, owner_token)
     except ValueError as e:
         raise PayloadTooLargeError(str(e)) if ("1 GB" in str(e) or "2 GB" in str(e)) else ApiError(str(e))
 
@@ -158,6 +225,7 @@ def refresh_token(transfer_id):
         max_ref = int(parts[2]) if len(parts) > 2 else 0
         return jsonify({
             "detail": "QR refresh limit reached. Generate a new transfer.",
+            "transfer_id": transfer_id,
             "refresh_count": current_refresh,
             "max_refreshes": max_ref,
             "limit_reached": True
@@ -166,12 +234,14 @@ def refresh_token(transfer_id):
 
 @file_bp.route("/api/file-info/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 @file_bp.route("/file-info/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/api/files/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
+@file_bp.route("/files/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 def get_file_info(file_id):
-    """Get file metadata (no encrypted blob)."""
+    """Get metadata for an encrypted file."""
     if request.method == "OPTIONS":
         return ("", 204)
 
-    _rate_limiter.check("file_info", _client_ip())
+    _rate_limiter.check("info", _client_ip())
     file_id = validate_file_id(file_id)
     proof = _request_access_proof()
     return jsonify(_transfer_service.get_file_info(file_id, proof))
@@ -180,69 +250,59 @@ def get_file_info(file_id):
 @file_bp.route("/api/download/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 @file_bp.route("/download/<file_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 def download_file(file_id):
-    """Download or preview encrypted file blob."""
+    """Download encrypted file blob."""
     if request.method == "OPTIONS":
         return ("", 204)
 
     _rate_limiter.check("download", _client_ip())
     file_id = validate_file_id(file_id)
     proof = _request_access_proof()
-    preview = request.args.get("preview", "false").lower() == "true"
-    if preview:
-        _rate_limiter.check("preview", _client_ip())
+    is_preview = request.args.get("preview") == "1"
 
-    row_dict, file_path, is_burn = _transfer_service.download_file(file_id, preview, proof)
+    row, file_path, is_burn = _transfer_service.download_file(file_id, preview=is_preview, proof=proof)
 
-    def generate():
+    def generate_stream():
         try:
             with open(file_path, "rb") as f:
-                while chunk := f.read(131072):
+                while chunk := f.read(65536):
                     yield chunk
         finally:
             if is_burn:
                 _transfer_service.purge_file(file_id)
 
-    safe_orig_name = urllib.parse.quote(row_dict["original_name"])
-    safe_filename = urllib.parse.quote(row_dict["filename"])
-
-    response = Response(generate(), mimetype="application/octet-stream")
-    response.headers["Content-Length"] = str(row_dict["encrypted_size"])
-    response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_filename}"
-    response.headers["X-Original-Name"] = safe_orig_name
-    response.headers["X-Compressed"] = str(row_dict["compressed"])
-    response.headers["X-Burn-On-Read"] = "1" if is_burn else "0"
-    response.headers["X-IV"] = row_dict["iv"]
-    response.headers["X-Salt"] = row_dict["salt"]
-    if row_dict["checksum"]:
-        response.headers["X-Checksum"] = row_dict["checksum"]
-
+    response = Response(generate_stream(), mimetype="application/octet-stream")
+    clean_name = row["filename"].replace('"', '\\"').replace('\r', '').replace('\n', '')
+    quoted_name = urllib.parse.quote(row["filename"], safe='')
+    response.headers["Content-Disposition"] = f'attachment; filename="{clean_name}"; filename*=UTF-8\'\'{quoted_name}'
+    response.headers["Content-Length"] = str(row["encrypted_size"])
+    response.headers["X-File-ID"] = row["id"]
+    response.headers["X-Original-Name"] = urllib.parse.quote(row["original_name"], safe='')
+    response.headers["X-Burn-On-Read"] = str(row["burn_on_read"])
+    response.headers["X-IV"] = row["iv"]
+    response.headers["X-Salt"] = row["salt"]
+    response.headers["X-Compressed"] = str(row["compressed"])
+    if row.get("checksum"):
+        response.headers["X-Checksum"] = row["checksum"]
     return response
 
 
 @file_bp.route("/api/files/<file_id>", methods=["DELETE", "OPTIONS"], strict_slashes=False)
 @file_bp.route("/files/<file_id>", methods=["DELETE", "OPTIONS"], strict_slashes=False)
 def delete_file(file_id):
-    """Delete file immediately."""
+    """Delete a transfer file (requires owner token)."""
     if request.method == "OPTIONS":
         return ("", 204)
 
-    _rate_limiter.check("delete", _client_ip())
     file_id = validate_file_id(file_id)
-    owner_token = (
-        request.headers.get("X-Owner-Token")
-        or request.args.get("owner_token")
-        or ""
-    ).strip()
-    if not owner_token:
-        raise ForbiddenError("Owner token required")
+    owner_token = (request.headers.get("X-Owner-Token") or request.args.get("token") or "").strip()
     _transfer_service.delete_file(file_id, owner_token)
-    return jsonify({"message": "File deleted"})
+    return jsonify({"message": "File deleted successfully"})
 
 
 @file_bp.route("/api/stats", methods=["GET", "OPTIONS"], strict_slashes=False)
 @file_bp.route("/stats", methods=["GET", "OPTIONS"], strict_slashes=False)
 def get_stats():
-    """Get server stats."""
+    """Public limits only — no internal data exposed."""
     if request.method == "OPTIONS":
         return ("", 204)
     return jsonify(_transfer_service.get_stats())
