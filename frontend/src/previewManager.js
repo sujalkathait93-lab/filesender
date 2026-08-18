@@ -74,6 +74,8 @@ export class PreviewManager {
       fileSize: size,
       mimeType: type || detection.mime,
       category: detection.category,
+      label: detection.label || 'File',
+      description: detection.description || '',
       canPreviewDirectly: isDirect,
       content: previewData,
       url: previewUrl,

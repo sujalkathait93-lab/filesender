@@ -1,7 +1,12 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick, AlertTriangle, ArrowRight, CheckCircle2, ShieldCheck, Sparkles, Clock } from 'lucide-react'
+import {
+  Shield, Upload, Download, Lock, Image as ImageIcon,
+  Flame, Key, Zap, MousePointerClick, AlertTriangle, ArrowRight,
+  CheckCircle2, ShieldCheck, Sparkles, Clock, Sun, Moon, Monitor, Radio
+} from 'lucide-react'
 import { PageSkeletonLoader } from './components/Skeletons'
+import { useTheme } from './context/ThemeContext'
 import brandLogo from './image/icons.png'
 import { api } from './services/api'
 import './App.css'
@@ -25,27 +30,13 @@ function App() {
       return false;
     }
   });
-  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
 
   useEffect(() => {
     detectServer();
   }, []);
-
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname]);
-
-  // Lock body scroll when mobile menu is open
-  useEffect(() => {
-    if (mobileOpen) {
-      document.body.classList.add('body-scroll-locked');
-    } else {
-      document.body.classList.remove('body-scroll-locked');
-    }
-    return () => document.body.classList.remove('body-scroll-locked');
-  }, [mobileOpen]);
 
   const detectServer = async () => {
     try {
@@ -66,16 +57,26 @@ function App() {
     } catch (_) {}
   };
 
+  const cycleTheme = () => {
+    if (theme === 'system') {
+      setTheme('light');
+    } else if (theme === 'light') {
+      setTheme('dark');
+    } else {
+      setTheme('system');
+    }
+  };
+
   const navLinkClass = (path) => location.pathname === path ? 'active' : '';
 
   return (
     <div className="app">
       <SpeedInsights />
 
-      {/* Navigation */}
+      {/* Top Header Navigation */}
       <nav className="navbar">
         <div className="navbar-container">
-          <Link to="/" className="nav-brand" onClick={() => setMobileOpen(false)}>
+          <Link to="/" className="nav-brand" aria-label="FileShare Home">
             <div className="nav-brand-icon">
               <img src={brandLogo} alt="FileShare Logo" className="brand-logo-img" />
             </div>
@@ -83,84 +84,56 @@ function App() {
               <span className="brand-text">FileShare</span>
               <span className="brand-quote-badge">Send, Share and Done</span>
             </div>
-              <span className="badge badge-primary nav-e2e-badge">
-                <ShieldCheck size={13} className="badge-icon" /> E2E ENCRYPTED
-            </span>
           </Link>
 
-          <div className="nav-links">
-            <Link to="/" className={navLinkClass('/')}>
-              <Zap size={16} /> Home
+          {/* Desktop Segmented Navigation */}
+          <div className="nav-segmented" role="navigation" aria-label="Main Navigation">
+            <Link to="/" className={`nav-segmented-link ${navLinkClass('/')}`}>
+              <Zap size={15} /> Home
             </Link>
-            <Link to="/upload" className={navLinkClass('/upload')}>
-              <Upload size={16} /> Send Files
+            <Link to="/upload" className={`nav-segmented-link ${navLinkClass('/upload')}`}>
+              <Upload size={15} /> Send Files
             </Link>
-            <Link to="/download" className={navLinkClass('/download')}>
-              <Download size={16} /> Receive Files
+            <Link to="/download" className={`nav-segmented-link ${navLinkClass('/download')}`}>
+              <Download size={15} /> Receive Files
             </Link>
           </div>
 
           <div className="nav-right">
-            <div className="network-badge network-badge-compact" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'} aria-live="polite">
+            <div
+              className="network-badge"
+              data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}
+              aria-live="polite"
+              title={serverOnline ? 'Backend server connected' : 'Connecting to server...'}
+            >
               <div className="network-dot"></div>
-              <span className="network-label">
-                {serverOnline === null ? 'Checking...' : serverOnline ? 'Online' : 'Offline'}
-              </span>
+              <span>{serverOnline === null ? 'Checking' : serverOnline ? 'Online' : 'Offline'}</span>
             </div>
 
             <button
-              className="mobile-menu-toggle"
-              onClick={() => setMobileOpen(!mobileOpen)}
-              aria-label="Toggle Navigation"
-              aria-expanded={mobileOpen}
-              aria-controls="mobile-nav-drawer"
+              className="theme-toggle-btn"
+              onClick={cycleTheme}
+              aria-label={`Current theme: ${theme}. Click to change.`}
+              title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)} (Click to switch)`}
             >
-              {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+              {theme === 'system' ? (
+                <Monitor size={16} />
+              ) : resolvedTheme === 'dark' ? (
+                <Moon size={16} />
+              ) : (
+                <Sun size={16} />
+              )}
             </button>
           </div>
         </div>
       </nav>
 
-      {/* Mobile Drawer with Backdrop */}
-      {mobileOpen && (
-        <>
-          <button className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" />
-          <div className="mobile-menu-drawer" id="mobile-nav-drawer" role="dialog" aria-label="Navigation menu">
-            <div className="mobile-drawer-brand">
-              <img src={brandLogo} alt="FileShare Logo" className="brand-logo-img" />
-              <div>
-                <div className="brand-text">FileShare</div>
-                <div className="brand-quote-drawer">Send, Share and Done</div>
-              </div>
-            </div>
-
-            <div className="mobile-network-status">
-              <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
-                <div className="network-dot"></div>
-                <span>
-                  {serverOnline === null ? 'Checking server...' : serverOnline ? 'Server Online' : 'Server Offline'}
-                </span>
-              </div>
-            </div>
-            <Link to="/" className={navLinkClass('/')} onClick={() => setMobileOpen(false)}>
-              <Zap size={18} /> Home
-            </Link>
-            <Link to="/upload" className={navLinkClass('/upload')} onClick={() => setMobileOpen(false)}>
-              <Upload size={18} /> Send Files
-            </Link>
-            <Link to="/download" className={navLinkClass('/download')} onClick={() => setMobileOpen(false)}>
-              <Download size={18} /> Receive Files
-            </Link>
-          </div>
-        </>
-      )}
-
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="main-content">
         {ephemeralStorage && !bannerDismissed && (
           <div className="ephemeral-banner animate-in" role="status">
             <div className="ephemeral-banner-content">
-              <AlertTriangle size={18} className="ephemeral-banner-icon" />
+              <AlertTriangle size={18} />
               <span>This host uses temporary serverless storage. Files clear after instance recycling.</span>
             </div>
             <button
@@ -168,10 +141,11 @@ function App() {
               onClick={handleDismissBanner}
               aria-label="Dismiss banner"
             >
-              <X size={16} />
+              &times;
             </button>
           </div>
         )}
+
         <Suspense fallback={<PageSkeletonLoader />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -181,7 +155,23 @@ function App() {
         </Suspense>
       </main>
 
-      {/* Flat Footer */}
+      {/* Mobile Bottom Navigation Bar (iOS / Android Native Feel) */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <Link to="/" className={`mobile-nav-item ${navLinkClass('/')}`}>
+          <Zap size={20} />
+          <span>Home</span>
+        </Link>
+        <Link to="/upload" className={`mobile-nav-item ${navLinkClass('/upload')}`}>
+          <Upload size={20} />
+          <span>Send</span>
+        </Link>
+        <Link to="/download" className={`mobile-nav-item ${navLinkClass('/download')}`}>
+          <Download size={20} />
+          <span>Receive</span>
+        </Link>
+      </nav>
+
+      {/* Footer */}
       <footer className="footer">
         <div className="footer-container">
           <div className="footer-brand">
@@ -190,7 +180,7 @@ function App() {
               <span>FileShare</span>
             </div>
             <p className="footer-quote-text">
-              <strong>Send, Share and Done.</strong> Zero-knowledge, browser-encrypted file sharing. No accounts required.
+              Zero-knowledge, browser-encrypted file sharing. Send, Share and Done.
             </p>
           </div>
           <div className="footer-links">
@@ -206,45 +196,21 @@ function App() {
 
 function HomePage() {
   return (
-    <div className="home-page">
+    <div className="home-page animate-in">
       {/* Hero Section */}
       <section className="hero">
         <div className="hero-badge-container">
-          <img src={brandLogo} alt="FileShare 3D Icon" className="hero-3d-icon" />
           <div className="hero-pill">
-            <ShieldCheck size={15} /> Send, Share and Done &bull; 100% Private
+            <ShieldCheck size={14} /> Zero-Knowledge &bull; AES-256-GCM
           </div>
         </div>
         <h1 className="hero-title">
           Send Files Safely.<br />
           <span className="hero-highlight">Send, Share and Done.</span>
         </h1>
-        <div className="hero-points-list">
-          <div className="hero-point-item">
-            <CheckCircle2 size={16} className="text-emerald" />
-            <span><strong>Zero-Knowledge:</strong> Encrypted in browser with AES-256-GCM</span>
-          </div>
-          <div className="hero-point-item">
-            <CheckCircle2 size={16} className="text-blue" />
-            <span><strong>Device Keys:</strong> Decryption key never touches the server</span>
-          </div>
-          <div className="hero-point-item">
-            <Clock size={16} className="text-amber" />
-            <span><strong>Auto-Expire:</strong> Self-destructs within 60 mins or on first read</span>
-          </div>
-          <div className="hero-point-item">
-            <Sparkles size={16} className="text-emerald" />
-            <span><strong>Stream &amp; Batch:</strong> 256 KB slices &amp; 2 MB batches in memory</span>
-          </div>
-          <div className="hero-point-item">
-            <ShieldCheck size={16} className="text-blue" />
-            <span><strong>Direct to Disk:</strong> Streams decrypted data without RAM overflow</span>
-          </div>
-          <div className="hero-point-item">
-            <Lock size={16} className="text-slate" />
-            <span><strong>Zero Data Retention:</strong> No accounts, logs, or stored plaintext</span>
-          </div>
-        </div>
+        <p className="hero-subtitle">
+          Hardware-accelerated browser encryption. Decryption keys never touch our servers. Instant codes, zero registrations.
+        </p>
 
         <div className="cta-buttons">
           <Link to="/upload" className="btn btn-primary btn-lg">
@@ -258,144 +224,136 @@ function HomePage() {
         {/* Quick Highlights Bar */}
         <div className="highlights-bar">
           <div className="highlight-item">
-            <CheckCircle2 size={16} className="text-emerald" />
+            <CheckCircle2 size={15} />
             <span>256 KB Slicing &amp; 2 MB Batches</span>
           </div>
           <div className="highlight-item">
-            <CheckCircle2 size={16} className="text-blue" />
-            <span>Send Up to 2 GB Free</span>
+            <CheckCircle2 size={15} />
+            <span>Up to 2 GB Transfer</span>
           </div>
           <div className="highlight-item">
-            <Clock size={16} className="text-amber" />
+            <CheckCircle2 size={15} />
             <span>Direct-to-Disk Streaming</span>
           </div>
         </div>
       </section>
 
-      {/* How it works - 3 clear steps */}
-      <section className="how-it-works-section">
+      {/* How It Works - 3 Step Linear Workflow */}
+      <section className="workflow-section">
         <div className="section-header">
-          <span className="section-tag">SIMPLE WORKFLOW</span>
+          <span className="section-tag">STREAMLINED WORKFLOW</span>
           <h2 className="section-title">How It Works</h2>
-          <p className="section-subtitle">Three easy steps to share your files securely.</p>
+          <p className="section-subtitle">Three clean steps to exchange encrypted files.</p>
         </div>
 
         <div className="steps-grid">
           <div className="step-card">
             <div className="step-number-badge">1</div>
-            <div className="step-icon-circle bg-blue-tint text-blue">
-              <MousePointerClick size={24} />
+            <div className="step-icon-circle">
+              <MousePointerClick size={20} />
             </div>
-            <h3 className="step-title">1. Choose Files</h3>
+            <h3 className="step-title">Select Files</h3>
             <ul className="step-points-list">
-              <li>Select &amp; drop files (up to 2 GB)</li>
-              <li>Set self-destruct &amp; expiry timers</li>
-              <li>Streamed in 256 KB memory-safe chunks</li>
+              <li>Drag &amp; drop single or multiple files (up to 2 GB)</li>
+              <li>Configure Burn-on-Read or 15–60 min expiry</li>
+              <li>Streamed in memory-safe 256 KB chunks</li>
             </ul>
           </div>
 
           <div className="step-card">
             <div className="step-number-badge">2</div>
-            <div className="step-icon-circle bg-emerald-tint text-emerald">
-              <Key size={24} />
+            <div className="step-icon-circle">
+              <Key size={20} />
             </div>
-            <h3 className="step-title">2. Get Transfer Code</h3>
+            <h3 className="step-title">Get Transfer Code</h3>
             <ul className="step-points-list">
-              <li>Browser encrypts via AES-256-GCM</li>
-              <li>One-click 6-digit code &amp; QR link</li>
+              <li>Encrypted in-browser using Web Crypto API</li>
+              <li>Instant 6-digit alphanumeric code &amp; QR link</li>
               <li>Server only receives ciphertext blobs</li>
             </ul>
           </div>
 
           <div className="step-card">
             <div className="step-number-badge">3</div>
-            <div className="step-icon-circle bg-amber-tint text-amber">
-              <Download size={24} />
+            <div className="step-icon-circle">
+              <Download size={20} />
             </div>
-            <h3 className="step-title">3. Download &amp; Decrypt</h3>
+            <h3 className="step-title">Download &amp; Stream</h3>
             <ul className="step-points-list">
-              <li>Receiver inputs code / scans QR</li>
-              <li>Streams decrypted batches directly to disk</li>
-              <li>In-browser preview for media &amp; docs</li>
+              <li>Recipient enters code or opens share link</li>
+              <li>In-browser preview for media, audio &amp; docs</li>
+              <li>Streams decrypted payload directly to disk</li>
             </ul>
           </div>
         </div>
       </section>
 
-      {/* Feature cards - 4 Core Security Pillars */}
-      <section className="features-section">
+      {/* Core Security & Architecture Pillars */}
+      <section className="security-section">
         <div className="section-header">
-          <span className="section-tag">CORE SECURITY</span>
-          <h2 className="section-title">Built for Absolute Privacy</h2>
-          <p className="section-subtitle">Every feature is designed with zero-trust architecture.</p>
+          <span className="section-tag">SECURITY FOUNDATION</span>
+          <h2 className="section-title">Built with Zero-Trust Architecture</h2>
+          <p className="section-subtitle">Engineered for absolute confidentiality and performance.</p>
         </div>
 
         <div className="features-grid">
-          {/* Box 1: Blue */}
-          <div className="feature-box feature-box-blue">
+          <div className="feature-box">
             <div className="feature-top">
-              <div className="feature-icon-circle bg-white text-blue">
-                <Lock size={24} />
+              <div className="feature-icon-circle">
+                <Lock size={20} />
               </div>
-              <span className="feature-badge badge-blue">PURE PRIVACY</span>
+              <span className="badge badge-primary">END-TO-END</span>
             </div>
-            <h3 className="feature-title">Browser-Only Encryption</h3>
+            <h3 className="feature-title">Browser-Only Cryptography</h3>
             <ul className="feature-points-list">
-              <li>AES-256-GCM military-grade cipher</li>
-              <li>Hardware-accelerated Web Crypto API</li>
-              <li>Key never leaves device (URL #hash)</li>
-              <li>Server stores zero plaintext data</li>
+              <li>AES-256-GCM authenticated encryption</li>
+              <li>Decryption key stays in client URL hash (#)</li>
+              <li>Zero server plaintext storage or logging</li>
             </ul>
           </div>
 
-          {/* Box 2: Emerald */}
-          <div className="feature-box feature-box-emerald">
+          <div className="feature-box">
             <div className="feature-top">
-              <div className="feature-icon-circle bg-white text-emerald">
-                <ImageIcon size={24} />
+              <div className="feature-icon-circle">
+                <ImageIcon size={20} />
               </div>
-              <span className="feature-badge badge-emerald">IMAGE VAULT</span>
+              <span className="badge badge-emerald">IMAGE VAULT</span>
             </div>
-            <h3 className="feature-title">Steganography Vault</h3>
+            <h3 className="feature-title">Steganography Injection</h3>
             <ul className="feature-points-list">
-              <li>Invisible LSB pixel injection in PNGs</li>
-              <li>Hides encrypted files inside normal images</li>
-              <li>Bypasses network traffic inspection</li>
-              <li>Secret extraction with master password</li>
+              <li>LSB pixel encoding conceals payload inside PNGs</li>
+              <li>Bypasses deep packet inspection filters</li>
+              <li>Direct extraction with master password</li>
             </ul>
           </div>
 
-          {/* Box 3: Amber */}
-          <div className="feature-box feature-box-amber">
+          <div className="feature-box">
             <div className="feature-top">
-              <div className="feature-icon-circle bg-white text-amber">
-                <Flame size={24} />
+              <div className="feature-icon-circle">
+                <Flame size={20} />
               </div>
-              <span className="feature-badge badge-amber">SELF-DESTRUCT</span>
+              <span className="badge badge-amber">AUTO-PURGE</span>
             </div>
-            <h3 className="feature-title">Burn-On-Read &amp; Expiry</h3>
+            <h3 className="feature-title">Burn-on-Read &amp; Expiry</h3>
             <ul className="feature-points-list">
-              <li>Instant file purge on first download</li>
-              <li>Configurable 60-minute TTL expiry</li>
-              <li>Automated background cleanup worker</li>
-              <li>Zero leftover residue on server disk</li>
+              <li>Instant cryptographic wipe upon first download</li>
+              <li>Configurable TTL auto-expiration (15–60 mins)</li>
+              <li>Automated worker removes expired blobs</li>
             </ul>
           </div>
 
-          {/* Box 4: Slate/Purple */}
-          <div className="feature-box feature-box-slate">
+          <div className="feature-box">
             <div className="feature-top">
-              <div className="feature-icon-circle bg-white text-slate">
-                <Key size={24} />
+              <div className="feature-icon-circle">
+                <Radio size={20} />
               </div>
-              <span className="feature-badge badge-slate">INSTANT ACCESS</span>
+              <span className="badge badge-slate">DIRECT P2P</span>
             </div>
-            <h3 className="feature-title">One-Code Instant Share</h3>
+            <h3 className="feature-title">WebRTC Peer Streaming</h3>
             <ul className="feature-points-list">
-              <li>Zero friction across mobile &amp; desktop</li>
-              <li>5x QR token refresh security limit</li>
-              <li>SHA-256 cryptographic access proof</li>
-              <li>No logins, sign-ups, or personal data</li>
+              <li>Device-to-device direct connection</li>
+              <li>Zero server intermediate storage</li>
+              <li>Ideal for multi-gigabyte files and media</li>
             </ul>
           </div>
         </div>
@@ -404,4 +362,4 @@ function HomePage() {
   );
 }
 
-export default App
+export default App;

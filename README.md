@@ -10,10 +10,9 @@
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Web Crypto](https://img.shields.io/badge/Web_Crypto_API-AES--256--GCM-4CAF50?style=for-the-badge)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
 [![Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-**Live Application:** [filesender-coral.vercel.app](https://filesender-coral.vercel.app/)  
-**GitHub Repository:** [sujalkathait93-lab/filesender](https://github.com/sujalkathait93-lab/filesender)
+**Live Application:** https://filesender-coral.vercel.app/  
+**GitHub Repository:** https://github.com/sujalkathait93-lab/filesender
 
 ---
 
@@ -212,23 +211,7 @@ node tests/crypto-roundtrip.mjs
 node tests/preview-and-states.test.mjs
 ```
 
----
 
-## Deployment
-
-1. Push your repository to GitHub:
-   ```bash
-   git add -A
-   git commit -m "Deploy FileShare"
-   git push origin main
-   ```
-2. Import the repository in [Vercel](https://vercel.com).
-3. Set **Root Directory** to `.` (project root).
-4. Configure environment variable:
-   - `SECRET_KEY`: A secure 64-character random string.
-5. Deploy. The React frontend and Flask API are built and deployed together using `vercel.json`.
-
----
 
 ## License
 

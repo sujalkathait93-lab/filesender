@@ -4,7 +4,8 @@ import {
   Download, Lock, Shield, Check, Key, Flame,
   Eye, X, ArrowLeft, FileText, Copy, Clock,
   Image as ImageIcon, Video, Music, FileCode, File,
-  Loader2, Search, Radio, RotateCcw, FolderDown, ShieldCheck
+  Loader2, Search, Radio, RotateCcw, FolderDown, ShieldCheck,
+  Archive, Package
 } from 'lucide-react'
 import { parseTransferCode, extractKeyFromUrl, formatBytes } from '../crypto'
 import { detectFileType } from '../fileManager'
@@ -23,11 +24,11 @@ function DownloadPage() {
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [codeInput, setCodeInput] = useState(urlFileId || '');
 
-  // Search guards (avoid duplicate requests)
+  // Search guards
   const searchInFlightRef = useRef(false);
   const lastSearchedCodeRef = useRef(null);
 
-  // Preview State (No artificial time limit)
+  // Preview State
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [activePreviewItem, setActivePreviewItem] = useState(null);
   const [previewBundleFiles, setPreviewBundleFiles] = useState([]);
@@ -170,23 +171,26 @@ function DownloadPage() {
 
   const getCategoryIcon = (category) => {
     switch (category) {
-      case 'image': return <ImageIcon size={22} />;
-      case 'video': return <Video size={22} />;
-      case 'audio': return <Music size={22} />;
-      case 'text': return <FileCode size={22} />;
-      case 'pdf': return <FileText size={22} />;
-      default: return <File size={22} />;
+      case 'image': return <ImageIcon size={20} />;
+      case 'video': return <Video size={20} />;
+      case 'audio': return <Music size={20} />;
+      case 'text': return <FileCode size={20} />;
+      case 'pdf': return <FileText size={20} />;
+      case 'archive': return <Archive size={20} />;
+      case 'document': return <FileText size={20} />;
+      case 'app': return <Package size={20} />;
+      default: return <File size={20} />;
     }
   };
 
   return (
     <div className="page-container animate-in">
-      <button className="btn btn-secondary back-btn" onClick={() => navigate('/')}>
-        <ArrowLeft size={16} /> Back to Home
+      <button className="btn btn-secondary btn-sm back-btn" onClick={() => navigate('/')}>
+        <ArrowLeft size={15} /> Back to Home
       </button>
 
       <div className="page-header">
-        <h2><Download /> Receive Files</h2>
+        <h2><Download size={22} /> Receive Files</h2>
         <p>Paste your full transfer code below to connect, preview, and download encrypted files.</p>
       </div>
 
@@ -210,33 +214,33 @@ function DownloadPage() {
         />
         <div className="download-input-actions">
           <button
-            className="btn btn-secondary"
+            className="btn btn-secondary btn-sm"
             onClick={handlePasteClipboard}
             title="Paste from clipboard"
             disabled={isLoading || isDecrypting}
           >
-            <Copy size={16} /> Paste
+            <Copy size={14} /> Paste
           </button>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm"
             onClick={() => handleSearchCode()}
             disabled={isLoading || isDecrypting || !codeInput.trim()}
             aria-busy={isLoading}
           >
             {isLoading ? (
               <>
-                <Loader2 size={18} className="spin" /> Connecting...
+                <Loader2 size={15} className="spin" /> Connecting...
               </>
             ) : (
               <>
-                <Key size={18} /> Connect &amp; Receive
+                <Key size={15} /> Connect &amp; Receive
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Skeletons */}
+      {/* Loading Skeletons */}
       {isLoading && <FileInfoSkeleton />}
 
       {/* Error state */}
@@ -262,7 +266,7 @@ function DownloadPage() {
         <div className="file-info animate-in">
           <div className="file-info-header">
             <div className="file-icon file-icon--success">
-              <FileText size={24} />
+              <FileText size={20} />
             </div>
             <div className="file-details">
               <h4>{fileInfo.original_name}</h4>
@@ -279,7 +283,7 @@ function DownloadPage() {
             </div>
             <div className="meta-item">
               <label>Downloads</label>
-              <span className={fileInfo.max_downloads === 0 ? 'text-success' : ''}>
+              <span>
                 {fileInfo.max_downloads === 0
                   ? 'Unlimited'
                   : fileInfo.max_downloads === 1
@@ -295,7 +299,7 @@ function DownloadPage() {
 
           {fileInfo.burn_on_read && !isBurned && (
             <div className="burn-banner">
-              <Flame size={24} className="burn-icon" />
+              <Flame size={20} className="burn-icon" />
               <div>
                 <strong className="burn-title">
                   Burn-on-Read Active
@@ -308,15 +312,17 @@ function DownloadPage() {
           )}
 
           {p2pStatus && (p2pState === 'waiting' || p2pState === 'connected') && (
-            <div className="status-message info section-stack">
-              <Radio size={18} /> {p2pStatus} REST download below still works.
+            <div className="status-message info" style={{ marginBottom: 16 }}>
+              <Radio size={16} />
+              <span>{p2pStatus} REST download below still works.</span>
             </div>
           )}
 
           {needsKey && !isBurned && (
             <div className="manual-key-section">
               <div className="status-message info">
-                <Key size={18} /> Decryption key required
+                <Key size={16} />
+                <span>Decryption key required</span>
               </div>
               <input
                 type="text"
@@ -330,7 +336,7 @@ function DownloadPage() {
 
           {/* Progress feedback while decrypting / downloading */}
           {progress && isDecrypting && (
-            <div className="download-progress">
+            <div style={{ marginBottom: 16 }}>
               <MeasurableProgressBar
                 stage={progress.stage}
                 percent={progress.percent}
@@ -340,29 +346,29 @@ function DownloadPage() {
           )}
 
           {!isBurned && (
-          <div className="action-row download-actions">
+            <div className="download-actions">
               <button
                 onClick={() => executeDownload(false, handlePreviewReady)}
                 disabled={isDecrypting}
-                className="btn btn-secondary download-preview-button"
+                className="btn btn-secondary"
                 title="View files in browser without downloading"
               >
-                {isDecrypting ? <Loader2 size={18} className="spin" /> : <Eye size={18} />}
+                {isDecrypting ? <Loader2 size={16} className="spin" /> : <Eye size={16} />}
                 <span>Preview Files</span>
               </button>
               <button
                 onClick={() => executeDownload(true)}
                 disabled={isDecrypting}
                 aria-busy={isDecrypting}
-                className="btn btn-primary download-save-button"
+                className="btn btn-primary"
               >
                 {isDecrypting ? (
                   <>
-                    <Loader2 size={18} className="spin" /> Decrypting...
+                    <Loader2 size={16} className="spin" /> Decrypting...
                   </>
                 ) : (
                   <>
-                    <Lock size={18} /> Save &amp; Download
+                    <Lock size={16} /> Save &amp; Download
                   </>
                 )}
               </button>
@@ -374,13 +380,13 @@ function DownloadPage() {
       {success && fileInfo && (
         <div className="success-section animate-in">
           <div className="success-icon-container">
-            <Check size={32} />
+            <Check size={28} />
           </div>
-          <h3>Transfer Decrypted Successfully!</h3>
+          <h3>Transfer Decrypted Successfully</h3>
 
-          {/* If Multi-File Bundle: Show All Unpacked Files with Individual Actions */}
+          {/* Multi-File Bundle List */}
           {decryptedFiles.length > 1 ? (
-            <div className="unpacked-files-container unpacked-files">
+            <div className="unpacked-files-container">
               <div className="unpacked-header">
                 <h4 className="unpacked-title">
                   Files in Transfer ({decryptedFiles.length})
@@ -389,7 +395,7 @@ function DownloadPage() {
                   className="btn btn-primary btn-sm"
                   onClick={downloadAllFiles}
                 >
-                  <FolderDown size={16} /> Download All ({decryptedFiles.length} Files)
+                  <FolderDown size={14} /> Download All ({decryptedFiles.length})
                 </button>
               </div>
 
@@ -400,7 +406,7 @@ function DownloadPage() {
                       <div className="file-icon file-icon--success">
                         {getCategoryIcon(detectFileType(file.name, file.type).category)}
                       </div>
-                      <div>
+                      <div style={{ minWidth: 0 }}>
                         <div className="file-item-name">{file.name}</div>
                         <div className="file-item-size">{formatBytes(file.size)}</div>
                       </div>
@@ -418,14 +424,14 @@ function DownloadPage() {
                         }}
                         title="Preview this file"
                       >
-                        <Eye size={14} /> Preview
+                        <Eye size={13} /> Preview
                       </button>
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => downloadSingleFile(file)}
                         title="Download this file"
                       >
-                        <Download size={14} /> Download
+                        <Download size={13} /> Download
                       </button>
                     </div>
                   </div>
@@ -436,7 +442,7 @@ function DownloadPage() {
             <div className="success-file-box">
               <div className="success-file-details">
                 <div className="file-icon file-icon--success">
-                  <FileText size={20} />
+                  <FileText size={18} />
                 </div>
                 <div>
                   <strong className="success-file-name">{decryptedFiles[0]?.name || fileInfo.original_name}</strong>
@@ -448,7 +454,7 @@ function DownloadPage() {
 
           {isBurned && (
             <div className="burn-banner">
-              <Flame size={24} className="burn-icon" />
+              <Flame size={20} className="burn-icon" />
               <div>
                 <strong className="burn-title">File Self-Destructed &amp; Purged!</strong>
                 <p className="burn-copy">
@@ -462,21 +468,21 @@ function DownloadPage() {
             <a
               href={decryptedBlobUrl}
               download={decryptedFiles[0]?.name || fileInfo.original_name}
-              className="btn btn-primary btn-lg success-download-link"
+              className="btn btn-primary btn-lg full-width success-download-link"
             >
-              <Download size={20} /> Save File to Downloads
+              <Download size={18} /> Save File to Downloads
             </a>
           )}
 
           <button className="btn btn-secondary button-block" onClick={handleNewSearch}>
-            <RotateCcw size={16} /> Receive Another File
+            <RotateCcw size={15} /> Receive Another File
           </button>
         </div>
       )}
 
       {isBurned && !success && (
         <div className="burn-banner">
-          <Flame size={24} className="burn-icon" />
+          <Flame size={20} className="burn-icon" />
           <div>
             <strong className="burn-title">File Self-Destructed &amp; Purged!</strong>
             <p className="burn-copy">
@@ -486,7 +492,7 @@ function DownloadPage() {
         </div>
       )}
 
-      {/* Clean Universal Preview Modal (No artificial countdown timer) */}
+      {/* Universal Preview Modal (Platform-Aware Bottom Sheet on mobile) */}
       {showPreviewModal && activePreviewItem && (
         <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="File Preview">
           <div className="preview-modal">
@@ -496,16 +502,17 @@ function DownloadPage() {
                 <span>Preview: {activePreviewItem.fileName}</span>
               </h3>
 
-              <div className="badge badge-primary">
-                <Eye size={14} className="preview-badge-icon" /> In-Browser Preview
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge badge-primary">
+                  <Eye size={12} /> In-Browser
+                </span>
+                <button className="preview-close" onClick={closeAndRevokePreview} aria-label="Close preview">
+                  <X size={18} />
+                </button>
               </div>
-
-              <button className="preview-close" onClick={closeAndRevokePreview} aria-label="Close preview">
-                <X size={20} />
-              </button>
             </div>
 
-            {/* Multi-file tab selector if transfer has multiple files */}
+            {/* Multi-file tab selector */}
             {previewBundleFiles.length > 1 && (
               <div className="preview-bundle-bar">
                 {previewBundleFiles.map((f, i) => (
@@ -524,7 +531,7 @@ function DownloadPage() {
               {/* Image Preview */}
               {activePreviewItem.category === 'image' && (
                 <div className="preview-media">
-                  {mediaLoading && <PreviewMediaSkeleton height="280px" />}
+                  {mediaLoading && <PreviewMediaSkeleton height="260px" />}
                   <img
                     src={activePreviewItem.content}
                     alt="Decrypted Preview"
@@ -538,7 +545,7 @@ function DownloadPage() {
               {/* Video Preview */}
               {activePreviewItem.category === 'video' && (
                 <div className="preview-media">
-                  {mediaLoading && <PreviewMediaSkeleton height="280px" />}
+                  {mediaLoading && <PreviewMediaSkeleton height="260px" />}
                   <video
                     src={activePreviewItem.content}
                     controls
@@ -556,7 +563,7 @@ function DownloadPage() {
               {/* Audio Preview */}
               {activePreviewItem.category === 'audio' && (
                 <div className="preview-audio-wrapper">
-                  <Music size={48} className="preview-audio-icon" />
+                  <Music size={40} className="preview-audio-icon" />
                   <p className="preview-audio-name">{activePreviewItem.fileName}</p>
                   <audio
                     src={activePreviewItem.content}
@@ -585,43 +592,41 @@ function DownloadPage() {
                 <pre className="preview-text">{activePreviewItem.content}</pre>
               )}
 
-              {/* Unsupported binary */}
+              {/* Unsupported binary / Archive / Document card */}
               {!activePreviewItem.canPreviewDirectly && (
                 <div className="preview-unsupported-card">
-                  <div className="file-icon file-icon--preview">
-                    <FileText size={28} />
+                  <div className="file-icon" style={{ margin: '0 auto 12px auto', width: 48, height: 48 }}>
+                    {getCategoryIcon(activePreviewItem.category)}
                   </div>
                   <h4>{activePreviewItem.fileName}</h4>
-                  <p className="preview-unsupported-description">
-                    Binary file ({activePreviewItem.mimeType || 'octet-stream'}). Download to view in your system viewer.
+                  <div style={{ margin: '8px 0' }}>
+                    <span className="badge badge-slate" style={{ fontSize: '0.75rem' }}>
+                      {activePreviewItem.label || 'File'}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)', maxWidth: 440, margin: '8px auto', lineHeight: 1.4 }}>
+                    {activePreviewItem.description || 'This file format cannot be rendered directly inside web browsers. Please download to open on your device.'}
                   </p>
-
-                  <div className="preview-meta-table">
-                    <div className="preview-meta-row">
-                      <span className="label">File Size:</span>
-                      <span className="val">{formatBytes(activePreviewItem.fileSize)}</span>
-                    </div>
-                    <div className="preview-meta-row">
-                      <span className="label">Security:</span>
-                      <span className="val verified-value">Verified AES-256-GCM</span>
-                    </div>
+                  <div style={{ marginTop: 12, padding: '6px 12px', background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
+                    <ShieldCheck size={14} style={{ color: 'var(--success-fg)' }} />
+                    <span>Size: {formatBytes(activePreviewItem.fileSize)} &bull; Verified AES-256-GCM Decryption</span>
                   </div>
                 </div>
               )}
             </div>
 
             <div className="preview-footer">
+              <button className="btn btn-secondary btn-sm" onClick={closeAndRevokePreview}>
+                Done Viewing
+              </button>
               <button
-                className="btn btn-primary"
+                className="btn btn-primary btn-sm"
                 onClick={() => {
                   closeAndRevokePreview();
                   executeDownload(true);
                 }}
               >
-                <Download size={16} /> Save &amp; Download File
-              </button>
-              <button className="btn btn-secondary" onClick={closeAndRevokePreview}>
-                Done Viewing
+                <Download size={14} /> Save &amp; Download
               </button>
             </div>
           </div>

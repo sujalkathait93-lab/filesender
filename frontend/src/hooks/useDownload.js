@@ -25,21 +25,21 @@ function mapDownloadError(err, fallback) {
   const status = err.status;
   const msg = (err.message || '').toLowerCase();
   const name = err.name || '';
-  if (status === 429) return 'Too many requests. Please wait a moment and retry.';
-  if (status === 413) return 'That file is too large (max 2 GB).';
-  if (status === 410 || msg.includes('expired')) {
-    if (msg.includes('preview')) return 'Preview limit reached for this transfer. You can still try Save & Download.';
-    if (msg.includes('expired')) return 'This transfer has expired and is no longer available.';
-    return 'This file has reached its download limit or self-destructed and is permanently unavailable.';
+  if (status === 429) return 'Rate limit exceeded: Too many requests. Please wait 30 seconds and retry.';
+  if (status === 413) return 'File exceeds maximum size limit (2 GB).';
+  if (status === 410 || msg.includes('expired') || msg.includes('gone') || msg.includes('deleted')) {
+    if (msg.includes('preview')) return 'In-browser preview limit reached for this transfer. Click Save & Download directly.';
+    if (msg.includes('expired')) return 'This transfer code has expired (time limit reached) and was securely purged from the server.';
+    return 'This file had Burn-on-Read active and was permanently self-destructed upon first download.';
   }
-  if (status === 403) return 'This lookup needs the full transfer code (id and password). File ID alone is not enough.';
-  if (status === 404) return 'Transfer not found. Please verify the code.';
-  if (status === 400) return 'Invalid transfer code. Please check and try again.';
+  if (status === 403) return 'Access proof error: Please ensure you pasted the full transfer code (FS-id-key) rather than just the file ID.';
+  if (status === 404) return 'Transfer not found: The code does not exist or was deleted by the sender.';
+  if (status === 400) return 'Invalid transfer code format. Please check the code and try again.';
   if (name === 'AbortError' || msg.includes('timeout') || msg.includes('failed to fetch') || msg.includes('network')) {
-    return 'Network error. Check your connection and retry.';
+    return 'Network error: Cannot reach FileShare server. Please verify your connection and retry.';
   }
-  if (name === 'OperationError' || msg.includes('operationerror') || msg.includes('decrypt')) {
-    return 'Decryption failed. The code may be wrong or the file is corrupted.';
+  if (name === 'OperationError' || msg.includes('operationerror') || msg.includes('decrypt') || msg.includes('tag')) {
+    return 'Decryption failed: The encryption key is incorrect or data was corrupted during transfer.';
   }
   return fallback;
 }

@@ -21,6 +21,21 @@ export default defineConfig({
       }
     }
   },
+  preview: {
+    host: true,
+    port: Number(process.env.PORT) || 5173,
+    proxy: {
+      '/api': {
+        target: backendTarget,
+        changeOrigin: true
+      },
+      '/socket.io': {
+        target: backendTarget,
+        changeOrigin: true,
+        ws: true
+      }
+    }
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
@@ -37,4 +52,4 @@ export default defineConfig({
       }
     }
   }
-})
+})

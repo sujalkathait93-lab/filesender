@@ -26,19 +26,49 @@ export function detectFileType(fileName = '', mimeType = '') {
     'bat', 'cmd', 'ps1', 'psm1', 'graphql', 'gql', 'scss', 'sass', 'less', 'vue', 'svelte',
     'tex', 'rst', 'diff', 'patch', 'properties', 'reg', 'gitignore', 'gitattributes', 'lock', 'json5'
   ];
-  const docExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods'];
+  const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz', 'zst', 'iso', 'cab', 'lz', 'lz4'];
+  const docExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'pages', 'numbers', 'key'];
+  const appExts = ['exe', 'dmg', 'apk', 'msi', 'deb', 'rpm', 'bin', 'appimage', 'pkg'];
 
   if (imageExts.includes(ext) || mime.startsWith('image/')) {
-    return { category: 'image', ext, mime: mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`, canPreviewDirectly: true };
+    return {
+      category: 'image',
+      label: 'Image',
+      ext,
+      mime: mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+      canPreviewDirectly: true,
+      description: 'High-resolution in-browser image viewer.'
+    };
   }
   if (videoExts.includes(ext) || mime.startsWith('video/')) {
-    return { category: 'video', ext, mime: mime || `video/${ext}`, canPreviewDirectly: true };
+    return {
+      category: 'video',
+      label: 'Video',
+      ext,
+      mime: mime || `video/${ext}`,
+      canPreviewDirectly: true,
+      description: 'In-browser video player with full playback controls.'
+    };
   }
   if (audioExts.includes(ext) || mime.startsWith('audio/')) {
-    return { category: 'audio', ext, mime: mime || `audio/${ext}`, canPreviewDirectly: true };
+    return {
+      category: 'audio',
+      label: 'Audio',
+      ext,
+      mime: mime || `audio/${ext}`,
+      canPreviewDirectly: true,
+      description: 'In-browser streaming audio player.'
+    };
   }
   if (ext === 'pdf' || mime === 'application/pdf') {
-    return { category: 'pdf', ext, mime: 'application/pdf', canPreviewDirectly: true };
+    return {
+      category: 'pdf',
+      label: 'PDF Document',
+      ext,
+      mime: 'application/pdf',
+      canPreviewDirectly: true,
+      description: 'Multi-page document preview.'
+    };
   }
   if (
     textExts.includes(ext) ||
@@ -50,13 +80,54 @@ export function detectFileType(fileName = '', mimeType = '') {
     mime.includes('sql') ||
     mime.includes('toml')
   ) {
-    return { category: 'text', ext, mime: mime || 'text/plain', canPreviewDirectly: true };
+    return {
+      category: 'text',
+      label: 'Source / Text',
+      ext,
+      mime: mime || 'text/plain',
+      canPreviewDirectly: true,
+      description: 'Syntax and monospace text viewer.'
+    };
+  }
+  if (archiveExts.includes(ext) || mime.includes('zip') || mime.includes('compressed') || mime.includes('archive')) {
+    return {
+      category: 'archive',
+      label: 'Zip / Archive',
+      ext,
+      mime: mime || 'application/zip',
+      canPreviewDirectly: false,
+      description: 'Compressed archive. Browsers cannot render ZIP contents directly; click below to download and extract on your device.'
+    };
   }
   if (docExts.includes(ext)) {
-    return { category: 'document', ext, mime: mime || 'application/octet-stream', canPreviewDirectly: false };
+    return {
+      category: 'document',
+      label: 'Office Document',
+      ext,
+      mime: mime || 'application/octet-stream',
+      canPreviewDirectly: false,
+      description: 'Proprietary document. Download to open in Microsoft Office, Google Docs, or LibreOffice.'
+    };
+  }
+  if (appExts.includes(ext)) {
+    return {
+      category: 'app',
+      label: 'Installer / App',
+      ext,
+      mime: mime || 'application/octet-stream',
+      canPreviewDirectly: false,
+      description: 'Application binary or disk image. Download to install or mount on your operating system.'
+    };
   }
 
-  return { category: 'other', ext, mime: mime || 'application/octet-stream', canPreviewDirectly: false };
+  return {
+    category: 'other',
+    label: 'Binary File',
+    ext,
+    mime: mime || 'application/octet-stream',
+    canPreviewDirectly: false,
+    description: 'Binary data. Download to view in your system viewer.'
+  };
 }
 
 /**

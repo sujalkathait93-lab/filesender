@@ -105,7 +105,8 @@ export function useEncryptAndSend(stateMachine) {
           const netData = await api.networkInfo();
           const lanIp = (netData.local_ips || []).find(ip => ip !== '127.0.0.1' && !ip.startsWith('127.'));
           if (lanIp) {
-            bestUrl = `http://${lanIp}:5173/download?code=${encodeURIComponent(shareReference)}#key=${encodeURIComponent(encrypted.password)}`;
+            const portStr = window.location.port ? `:${window.location.port}` : '';
+            bestUrl = `http://${lanIp}${portStr}/download?code=${encodeURIComponent(shareReference)}#key=${encodeURIComponent(encrypted.password)}`;
           }
         } catch (e) {
           console.warn("Failed to fetch network info for LAN sharing URL:", e);
@@ -138,8 +139,11 @@ export function useEncryptAndSend(stateMachine) {
       const msg = (err.message || '').toLowerCase();
       let friendly = err.message || 'Something went wrong while uploading. Please try again.';
       if (status === 429) friendly = 'Too many uploads. Please wait a moment and retry.';
-      else if (status === 413 || msg.includes('2 gb')) friendly = 'Upload exceeds the 2 GB limit.';
-      else if (msg.includes('network') || msg.includes('failed to fetch')) friendly = 'Network error during upload. Check your connection and retry.';
+      else if (status === 413 || msg.includes('2 gb') || msg.includes('payload too large') || msg.includes('maximum allowed size')) {
+        friendly = 'Upload exceeds the 2 GB limit. Please select files smaller than 2 GB, or enable Direct P2P mode.';
+      } else if (msg.includes('network') || msg.includes('failed to fetch')) {
+        friendly = 'Network error during upload. Check your connection and retry.';
+      }
       setError(friendly);
       stateMachine?.transitionTo(TransferState.FAILED);
       setProgress(null);

@@ -24,21 +24,24 @@ export function EmptyState({ icon: Icon = Info, title, description, actionText, 
 /**
  * Error Alert with Retry Action
  */
-export function ErrorAlert({ message, onRetry }) {
+export function ErrorAlert({ message, onRetry, actionText = 'Retry', onAction }) {
   if (!message) return null;
+  const handler = onAction || onRetry;
 
   return (
     <div className="status-message error animate-in" role="alert">
-      <AlertTriangle size={20} className="status-icon" />
-      <div className="status-message-copy">{message}</div>
-      {onRetry && (
+      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>{message}</div>
+      {handler && (
         <button
-          className="btn btn-secondary error-retry-btn"
-          onClick={onRetry}
-          title="Retry operation"
-          aria-label="Retry operation"
+          className="btn btn-secondary btn-sm"
+          onClick={handler}
+          title={actionText}
+          aria-label={actionText}
+          style={{ flexShrink: 0 }}
         >
-          <RefreshCw size={14} /> Retry
+          {actionText === 'Retry' && <RefreshCw size={13} />}
+          {actionText}
         </button>
       )}
     </div>
