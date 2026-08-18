@@ -221,7 +221,7 @@ export function formatBytes(bytes, decimals = 2) {
 }
 
 /**
- * Intelligent File Size Tier Analyzer (SRP: Smart file size categorization & guidance)
+ * Intelligent File Size Tier & Smart Transfer Optimization Analyzer (SRP: Smart file size categorization & guidance up to 1 GB)
  */
 export function getFileSizeTier(bytes = 0) {
   if (!bytes || bytes <= 0) {
@@ -231,66 +231,85 @@ export function getFileSizeTier(bytes = 0) {
       badgeClass: 'badge-slate',
       description: 'Select files up to 1 GB total.',
       suggestP2P: false,
-      stegoRecommended: false
+      stegoRecommended: false,
+      optimizationTip: 'Max payload 1 GB with zero-knowledge AES-256-GCM encryption.'
     };
   }
 
   const ONE_MB = 1024 * 1024;
-  const TEN_MB = 10 * ONE_MB;
-  const FIFTY_MB = 50 * ONE_MB;
-  const TWO_HUNDRED_MB = 200 * ONE_MB;
+  const TWENTY_FIVE_MB = 25 * ONE_MB;
+  const ONE_HUNDRED_MB = 100 * ONE_MB;
+  const FIVE_HUNDRED_MB = 500 * ONE_MB;
+  const ONE_GB = 1024 * 1024 * 1024;
 
   if (bytes < ONE_MB) {
     return {
       tier: 'tiny',
       label: 'Tiny (< 1 MB)',
       badgeClass: 'badge-emerald',
-      description: 'Instant transfer & zero server strain. Great for Burn-on-Read or Steganography Vault.',
+      description: 'Instant transfer with zero server strain. Steganography Image Vault & Burn-on-Read recommended.',
       suggestP2P: false,
-      stegoRecommended: true
+      stegoRecommended: true,
+      optimizationTip: 'Sub-second client encryption • Steganography capable'
     };
   }
 
-  if (bytes <= TEN_MB) {
+  if (bytes <= TWENTY_FIVE_MB) {
     return {
       tier: 'small',
-      label: 'Small (1 – 10 MB)',
+      label: 'Small (1 – 25 MB)',
       badgeClass: 'badge-primary',
-      description: 'Standard Cloud Encrypted transfer. Uploads and encrypts in under 1 second.',
+      description: 'Standard Cloud Encrypted transfer. Uploads and encrypts in under 1 second with automatic gzip compression.',
       suggestP2P: false,
-      stegoRecommended: true
+      stegoRecommended: bytes <= 10 * ONE_MB,
+      optimizationTip: 'High-speed cloud vault • Adaptive gzip compression'
     };
   }
 
-  if (bytes <= FIFTY_MB) {
+  if (bytes <= ONE_HUNDRED_MB) {
     return {
       tier: 'medium',
-      label: 'Medium (10 – 50 MB)',
-      badgeClass: 'badge-slate',
-      description: 'Standard Cloud Encrypted transfer with memory-safe chunking.',
+      label: 'Medium (25 – 100 MB)',
+      badgeClass: 'badge-cyan',
+      description: 'Optimized Cloud Transfer with memory-safe 4 MB streaming encryption slices.',
       suggestP2P: false,
-      stegoRecommended: false
+      stegoRecommended: false,
+      optimizationTip: 'Chunked stream active • Constant low RAM footprint'
     };
   }
 
-  if (bytes <= TWO_HUNDRED_MB) {
+  if (bytes <= FIVE_HUNDRED_MB) {
     return {
       tier: 'large',
-      label: 'Large (50 – 200 MB)',
+      label: 'Large (100 – 500 MB)',
       badgeClass: 'badge-amber',
-      description: 'Stream & Batch memory pipeline active (256 KB slices). Memory-safe processing.',
+      description: 'High-Speed Streaming Vault active. Memory-safe chunked pipeline (4 MB slices). Direct P2P available.',
       suggestP2P: false,
-      stegoRecommended: false
+      stegoRecommended: false,
+      optimizationTip: 'Stream & Batch memory pipeline • Zero browser freeze'
+    };
+  }
+
+  if (bytes <= ONE_GB) {
+    return {
+      tier: 'ultra',
+      label: 'Ultra (500 MB – 1 GB)',
+      badgeClass: 'badge-purple',
+      description: 'Approaching 1 GB capacity limit. Direct WebRTC P2P recommended for 0 server load & instant transfer, or continue with Streamed Cloud Vault.',
+      suggestP2P: true,
+      stegoRecommended: false,
+      optimizationTip: 'Near 1 GB max • Direct P2P recommended for fastest transfer'
     };
   }
 
   return {
-    tier: 'very_large',
-    label: 'Very Large (> 200 MB)',
-    badgeClass: 'badge-purple',
-    description: 'Direct P2P Recommended: Eliminates server load and streams unlimited file sizes directly device-to-device.',
+    tier: 'overlimit',
+    label: 'Over Limit (> 1 GB)',
+    badgeClass: 'badge-rose',
+    description: 'Selected size exceeds the 1 GB cloud storage limit. Switch to WebRTC Direct P2P to transfer unlimited sizes device-to-device.',
     suggestP2P: true,
-    stegoRecommended: false
+    stegoRecommended: false,
+    optimizationTip: 'Exceeds 1 GB • WebRTC Direct P2P required'
   };
 }
 

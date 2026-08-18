@@ -2769,6 +2769,73 @@ button, a, input, select, textarea {
   margin-bottom: var(--space-4);
 }
 
+/* ─── Generic Badge Design System Tokens ─────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.badge-primary {
+  background-color: var(--accent-subtle);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.badge-emerald {
+  background-color: var(--success-subtle);
+  color: var(--success-fg);
+  border: 1px solid var(--success-border);
+}
+
+.badge-amber {
+  background-color: var(--warning-subtle);
+  color: var(--warning-fg);
+  border: 1px solid var(--warning-border);
+}
+
+.badge-cyan {
+  background-color: rgba(6, 182, 212, 0.1);
+  color: #0891b2;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.badge-purple {
+  background-color: rgba(168, 85, 247, 0.1);
+  color: #9333ea;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-rose {
+  background-color: var(--danger-subtle);
+  color: var(--danger-fg);
+  border: 1px solid var(--danger-border);
+}
+
+.badge-slate {
+  background-color: var(--bg-muted);
+  color: var(--fg-muted);
+  border: 1px solid var(--border-strong);
+}
+
+[data-theme="dark"] .badge-cyan {
+  color: #22d3ee;
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+[data-theme="dark"] .badge-purple {
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
 /* ─── Smart File Size Tier Analyzer & Recommendation Card ─────────── */
 
 .smart-tier-card {
@@ -2780,16 +2847,38 @@ button, a, input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.smart-tier-card.tier-very_large {
-  border-color: rgba(168, 85, 247, 0.4);
-  background-color: rgba(168, 85, 247, 0.05);
+  transition: var(--transition-normal);
 }
 
 .smart-tier-card.tier-tiny {
   border-color: rgba(16, 185, 129, 0.4);
   background-color: rgba(16, 185, 129, 0.05);
+}
+
+.smart-tier-card.tier-small {
+  border-color: rgba(0, 102, 255, 0.35);
+  background-color: rgba(0, 102, 255, 0.04);
+}
+
+.smart-tier-card.tier-medium {
+  border-color: rgba(6, 182, 212, 0.35);
+  background-color: rgba(6, 182, 212, 0.04);
+}
+
+.smart-tier-card.tier-large {
+  border-color: rgba(245, 158, 11, 0.4);
+  background-color: rgba(245, 158, 11, 0.05);
+}
+
+.smart-tier-card.tier-ultra,
+.smart-tier-card.tier-very_large {
+  border-color: rgba(168, 85, 247, 0.45);
+  background-color: rgba(168, 85, 247, 0.06);
+}
+
+.smart-tier-card.tier-overlimit {
+  border-color: rgba(239, 68, 68, 0.45);
+  background-color: rgba(239, 68, 68, 0.06);
 }
 
 .smart-tier-top {
@@ -2818,7 +2907,26 @@ button, a, input, select, textarea {
 .smart-tier-desc {
   font-size: 0.775rem;
   color: var(--fg-muted);
-  line-height: 1.4;
+  line-height: 1.45;
+}
+
+.smart-tier-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.725rem;
+  font-weight: 500;
+  color: var(--fg-default);
+  padding: 3px 8px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  align-self: flex-start;
+}
+
+.smart-tier-tip-icon {
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .smart-tier-p2p-btn {

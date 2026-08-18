@@ -1,12 +1,13 @@
 /**
  * Unit & Integration Test Suite for:
- * 1. File Manager (pack / unpack / detectFileType / size validation)
+ * 1. File Manager (pack / unpack / detectFileType / size validation / 1 GB tiers)
  * 2. Preview Manager (30s countdown / MIME categorization / Object URL lifecycle)
  * 3. Transfer State Machine (canonical pipeline and error state transitions)
+ * 4. Transfer Codes & URLs
  */
 
 import { TransferStateMachine, TransferState } from '../frontend/src/stateMachine.js';
-import { detectFileType, validateFiles, packFiles, unpackFiles } from '../frontend/src/fileManager.js';
+import { detectFileType, validateFiles, packFiles, unpackFiles, getFileSizeTier } from '../frontend/src/fileManager.js';
 import { PreviewManager } from '../frontend/src/previewManager.js';
 import { createTransferCode, parseTransferCode, createShareMessage, isValidTransferCodeInput } from '../frontend/src/transferCode.js';
 
@@ -31,21 +32,31 @@ async function runTests() {
   check('pdf detection', detectFileType('report.pdf').category === 'pdf' && detectFileType('report.pdf').canPreviewDirectly === true);
   check('text detection', detectFileType('code.py').category === 'text' && detectFileType('code.py').canPreviewDirectly === true);
   check('doc unsupported direct preview', detectFileType('notes.docx').category === 'document' && detectFileType('notes.docx').canPreviewDirectly === false);
-  check('bin unsupported direct preview', detectFileType('setup.exe').category === 'other' && detectFileType('setup.exe').canPreviewDirectly === false);
+  check('app unsupported direct preview', detectFileType('setup.exe').category === 'app' && detectFileType('setup.exe').canPreviewDirectly === false);
+  check('generic unsupported direct preview', detectFileType('data.xyz').category === 'other' && detectFileType('data.xyz').canPreviewDirectly === false);
 
-  console.log('== 2. File Size Validation (2 GB Limit) ==');
+  console.log('== 2. File Size Validation & Smart Transfer Optimization (1 GB Limit) ==');
   const validFiles = [
     { name: 'f1.txt', size: 1024 * 1024 * 500 }, // 500 MB
     { name: 'f2.txt', size: 1024 * 1024 * 500 }, // 500 MB
   ];
   const v1 = validateFiles(validFiles, 0);
-  check('under 2GB capacity passes', v1.valid === true);
+  check('under 1 GB capacity passes', v1.valid === true);
 
   const oversizedFiles = [
-    { name: 'big.iso', size: 1024 * 1024 * 1024 * 2.5 } // 2.5 GB
+    { name: 'big.iso', size: 1024 * 1024 * 1024 * 1.5 } // 1.5 GB
   ];
   const v2 = validateFiles(oversizedFiles, 0);
-  check('over 2GB rejected', v2.valid === false && v2.error.includes('exceeds'));
+  check('over 1 GB rejected', v2.valid === false && v2.error.includes('exceeds'));
+
+  // Smart Transfer Optimization Tiers (0 to 1 GB)
+  check('tier: empty', getFileSizeTier(0).tier === 'empty');
+  check('tier: tiny (<1 MB)', getFileSizeTier(500 * 1024).tier === 'tiny' && getFileSizeTier(500 * 1024).stegoRecommended === true);
+  check('tier: small (1-25 MB)', getFileSizeTier(15 * 1024 * 1024).tier === 'small');
+  check('tier: medium (25-100 MB)', getFileSizeTier(60 * 1024 * 1024).tier === 'medium');
+  check('tier: large (100-500 MB)', getFileSizeTier(300 * 1024 * 1024).tier === 'large');
+  check('tier: ultra (500 MB - 1 GB)', getFileSizeTier(800 * 1024 * 1024).tier === 'ultra' && getFileSizeTier(800 * 1024 * 1024).suggestP2P === true);
+  check('tier: overlimit (>1 GB)', getFileSizeTier(1.2 * 1024 * 1024 * 1024).tier === 'overlimit' && getFileSizeTier(1.2 * 1024 * 1024 * 1024).suggestP2P === true);
 
   console.log('== 3. Multi-File Bundle Packaging & Unpacking ==');
   const f1Data = new TextEncoder().encode('Content of file 1');

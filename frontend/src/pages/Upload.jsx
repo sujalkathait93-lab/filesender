@@ -5,7 +5,7 @@ import {
   Image as ImageIcon, Flame, Clock, ArrowLeft, Info,
   RefreshCw, Loader2, Users, Radio, Eye, Trash2,
   FileText, Video, Music, FileCode, ShieldCheck, Sparkles, QrCode, HelpCircle,
-  Archive, Package
+  Archive, Package, Zap
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { formatBytes, copyToClipboard } from '../crypto'
@@ -405,6 +405,12 @@ function UploadPage() {
                       )}
                     </div>
                     <p className="smart-tier-desc">{sizeTier.description}</p>
+                    {sizeTier.optimizationTip && (
+                      <div className="smart-tier-tip">
+                        <Zap size={13} className="smart-tier-tip-icon" />
+                        <span>{sizeTier.optimizationTip}</span>
+                      </div>
+                    )}
                   </div>
                 );
               })()}

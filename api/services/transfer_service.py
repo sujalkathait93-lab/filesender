@@ -57,7 +57,7 @@ class TransferService:
         encrypted_size = 0
         try:
             with open(file_path, "wb") as f:
-                while chunk := file_obj.read(131072):  # 128 KB write buffer
+                while chunk := file_obj.read(262144):  # 256 KB write buffer for high-throughput 1 GB streaming
                     encrypted_size += len(chunk)
                     if encrypted_size > MAX_FILE_SIZE:
                         raise ValueError("Total file size cannot exceed 1 GB")
