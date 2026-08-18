@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Upload, File, X, Copy, Check, Shield, Lock, Key,
   Image as ImageIcon, Flame, Clock, ArrowLeft, Info,
-  RefreshCw, Loader2, Users, Radio, Eye, Share2, Trash2,
+  RefreshCw, Loader2, Users, Radio, Eye, Trash2,
   FileText, Video, Music, FileCode, ShieldCheck, Sparkles, QrCode
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -189,17 +189,6 @@ function UploadPage() {
     copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleNativeShare = async () => {
-    if (navigator.share && result) {
-      try {
-        await navigator.share({
-          title: 'FileShare Encrypted Transfer',
-          text: `Encrypted Transfer Code: ${result.transferCode}`,
-          url: shareUrl || window.location.origin
-        });
-      } catch (_) {}
-    }
-  };
 
   const handleClearAll = () => {
     clearFiles();
@@ -210,7 +199,7 @@ function UploadPage() {
     stateMachine.transitionTo(TransferState.IDLE);
   };
 
-  // Preview local file before upload (no timer)
+  // Preview local file before upload (no restriction or timer)
   const handleOpenLocalPreview = (fileObj) => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewFile(fileObj);
@@ -220,13 +209,28 @@ function UploadPage() {
       const url = URL.createObjectURL(fileObj);
       setPreviewUrl(url);
       setPreviewText(null);
-    } else if (detection.category === 'text') {
+    } else if (detection.category === 'text' || fileObj.size <= 10 * 1024 * 1024) {
       const reader = new FileReader();
       reader.onload = () => {
-        setPreviewText(reader.result);
+        const textResult = reader.result;
+        if (typeof textResult === 'string') {
+          // Check for printable text
+          const sample = textResult.slice(0, 1000);
+          const nonPrintableCount = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
+          if (detection.category === 'text' || (nonPrintableCount / (sample.length || 1) < 0.05)) {
+            setPreviewText(textResult);
+            setPreviewUrl(null);
+            return;
+          }
+        }
         setPreviewUrl(null);
+        setPreviewText(null);
       };
-      reader.readAsText(fileObj.slice(0, 100000));
+      reader.onerror = () => {
+        setPreviewUrl(null);
+        setPreviewText(null);
+      };
+      reader.readAsText(fileObj);
     } else {
       setPreviewUrl(null);
       setPreviewText(null);
@@ -239,6 +243,15 @@ function UploadPage() {
     setPreviewUrl(null);
     setPreviewText(null);
   };
+
+  useEffect(() => {
+    if (!previewFile) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') handleCloseLocalPreview();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewFile]);
 
   return (
     <div className="page-container animate-in">
@@ -307,8 +320,8 @@ function UploadPage() {
 
           {files.length > 0 && (
             <div className="file-info animate-in">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--fg-main)' }}>
+              <div className="file-section-header">
+                <h4 className="file-section-heading">
                   Selected Files ({files.length})
                 </h4>
                 <button
@@ -324,7 +337,7 @@ function UploadPage() {
                 {files.map((f, idx) => (
                   <div key={idx} className="file-item">
                     <div className="file-item-left">
-                      <div className="file-icon" style={{ backgroundColor: 'var(--secondary-tint)', color: 'var(--secondary)' }}>
+                      <div className="file-icon file-icon--success">
                         {getFileIcon(f.name, f.type)}
                       </div>
                       <div>
@@ -332,7 +345,7 @@ function UploadPage() {
                         <div className="file-item-size">{formatBytes(f.size)} • {f.type || 'File'}</div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div className="file-row-actions">
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={(e) => { e.stopPropagation(); handleOpenLocalPreview(f); }}
@@ -354,22 +367,22 @@ function UploadPage() {
                 ))}
               </div>
 
-              <div className="capacity-bar-container" style={{ margin: '1.25rem 0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--fg-muted)', marginBottom: '0.4rem', fontWeight: 600 }}>
+              <div className="capacity-bar-container">
+                <div className="capacity-labels">
                   <span>Total Size: {formatBytes(totalSelectedSize)}</span>
                   <span>Capacity: 2 GB max</span>
                 </div>
-                <div className="progress-bar">
-                  <div
-                    className={`progress-fill ${isOverLimit ? 'error-fill' : 'green-fill'}`}
-                    style={{ width: `${Math.min(100, (totalSelectedSize / MAX_TOTAL_TRANSFER_SIZE) * 100)}%` }}
-                  />
-                </div>
+                <progress
+                  className={`capacity-progress ${isOverLimit ? 'capacity-progress--error' : ''}`}
+                  value={totalSelectedSize}
+                  max={MAX_TOTAL_TRANSFER_SIZE}
+                  aria-label="Selected file size relative to the 2 GB limit"
+                />
               </div>
 
               {/* Enhanced Sharing Options with clear purpose explanations */}
               <div className="vault-settings">
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--fg-main)', marginBottom: '0.25rem' }}>
+                <h4 className="settings-heading">
                   Sharing &amp; Privacy Options
                 </h4>
 
@@ -381,17 +394,17 @@ function UploadPage() {
                   tabIndex={0}
                   onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && handleBurnToggle()}
                 >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
-                      <div style={{ padding: '0.4rem', backgroundColor: 'var(--error-tint)', color: 'var(--error)', borderRadius: '6px', marginTop: '2px' }}>
+                  <div className="option-card__content">
+                    <div className="option-card__copy">
+                      <div className="option-card__icon option-card__icon--danger">
                         <Flame size={20} />
                       </div>
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                          <strong style={{ fontSize: '0.975rem', color: 'var(--fg-main)' }}>Burn-on-Read (Self-Destruct)</strong>
-                          <span className="badge badge-amber" style={{ fontSize: '0.65rem' }}>ONE-TIME USE</span>
+                        <div className="option-card__title-row">
+                          <strong className="option-card__title">Burn-on-Read (Self-Destruct)</strong>
+                          <span className="badge badge-amber">ONE-TIME USE</span>
                         </div>
-                        <span style={{ fontSize: '0.85rem', display: 'block', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                        <span className="option-card__description">
                           Permanently deletes the file from the server immediately after the first download. Best for sensitive passwords, credentials, and private documents.
                         </span>
                       </div>
@@ -401,7 +414,7 @@ function UploadPage() {
                       checked={burnOnRead}
                       disabled={isTransferring}
                       onChange={(e) => { e.stopPropagation(); handleBurnToggle(); }}
-                      style={{ width: '20px', height: '20px', accentColor: 'var(--error)', cursor: 'pointer', marginTop: '4px' }}
+                      className="option-checkbox option-checkbox--danger"
                       aria-label="Burn on read"
                     />
                   </div>
@@ -415,17 +428,17 @@ function UploadPage() {
                   tabIndex={0}
                   onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseSteganography(!useSteganography)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
-                      <div style={{ padding: '0.4rem', backgroundColor: 'var(--secondary-tint)', color: 'var(--secondary)', borderRadius: '6px', marginTop: '2px' }}>
+                  <div className="option-card__content">
+                    <div className="option-card__copy">
+                      <div className="option-card__icon option-card__icon--success">
                         <ImageIcon size={20} />
                       </div>
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                          <strong style={{ fontSize: '0.975rem', color: 'var(--fg-main)' }}>Image Steganography Disguise</strong>
-                          <span className="badge badge-emerald" style={{ fontSize: '0.65rem' }}>STEALTH</span>
+                        <div className="option-card__title-row">
+                          <strong className="option-card__title">Image Steganography Disguise</strong>
+                          <span className="badge badge-emerald">STEALTH</span>
                         </div>
-                        <span style={{ fontSize: '0.85rem', display: 'block', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                        <span className="option-card__description">
                           Disguises encrypted file bytes inside harmless PNG image pixels. Network observers and firewalls only see an innocent photo upload.
                         </span>
                       </div>
@@ -435,7 +448,7 @@ function UploadPage() {
                       checked={useSteganography}
                       disabled={isTransferring}
                       onChange={(e) => { e.stopPropagation(); setUseSteganography(e.target.checked); }}
-                      style={{ width: '20px', height: '20px', accentColor: 'var(--secondary)', cursor: 'pointer', marginTop: '4px' }}
+                      className="option-checkbox option-checkbox--success"
                       aria-label="Hide inside an image"
                     />
                   </div>
@@ -449,17 +462,17 @@ function UploadPage() {
                   tabIndex={0}
                   onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseP2P(!useP2P)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
-                      <div style={{ padding: '0.4rem', backgroundColor: 'var(--primary-tint)', color: 'var(--primary)', borderRadius: '6px', marginTop: '2px' }}>
+                  <div className="option-card__content">
+                    <div className="option-card__copy">
+                      <div className="option-card__icon option-card__icon--primary">
                         <Radio size={20} />
                       </div>
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                          <strong style={{ fontSize: '0.975rem', color: 'var(--fg-main)' }}>Direct P2P Transfer (WebRTC)</strong>
-                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }}>REAL-TIME</span>
+                        <div className="option-card__title-row">
+                          <strong className="option-card__title">Direct P2P Transfer (WebRTC)</strong>
+                          <span className="badge badge-primary">REAL-TIME</span>
                         </div>
-                        <span style={{ fontSize: '0.85rem', display: 'block', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                        <span className="option-card__description">
                           Streams files directly between both browsers in real time when sender and receiver are active simultaneously. REST transfer remains the default fallback.
                         </span>
                       </div>
@@ -469,7 +482,7 @@ function UploadPage() {
                       checked={useP2P}
                       disabled={isTransferring}
                       onChange={(e) => { e.stopPropagation(); setUseP2P(e.target.checked); }}
-                      style={{ width: '20px', height: '20px', accentColor: 'var(--primary)', cursor: 'pointer', marginTop: '4px' }}
+                      className="option-checkbox option-checkbox--primary"
                       aria-label="Direct P2P same time"
                     />
                   </div>
@@ -477,7 +490,7 @@ function UploadPage() {
 
                 {/* Download limit selection */}
                 <div className="expiry-row">
-                  <Users size={18} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+                  <Users size={18} className="field-icon" />
                   <label htmlFor="downloads-select">Download Limit</label>
                   <select
                     id="downloads-select"
@@ -497,7 +510,7 @@ function UploadPage() {
 
                 {/* Expiry selection up to 60 minutes only */}
                 <div className="expiry-row">
-                  <Clock size={18} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+                  <Clock size={18} className="field-icon" />
                   <label htmlFor="expiry-select">Code Expiry (Up to 60 Minutes)</label>
                   <select
                     id="expiry-select"
@@ -515,7 +528,7 @@ function UploadPage() {
 
               {/* Progress Bar with Percentage and Stage */}
               {progress && (
-                <div style={{ marginTop: '1.25rem' }}>
+                <div className="section-stack">
                   <MeasurableProgressBar
                     stage={progress.stage}
                     percent={progress.percent}
@@ -524,13 +537,12 @@ function UploadPage() {
                 </div>
               )}
 
-              <div className="action-row" style={{ marginTop: '1.5rem' }}>
+              <div className="action-row section-stack--large">
                 <button
-                  className="btn btn-primary btn-lg"
                   onClick={openConfirmation}
                   disabled={isTransferring || isOverLimit || files.length === 0}
                   aria-busy={isTransferring}
-                  style={{ width: '100%' }}
+                  className="btn btn-primary btn-lg full-width"
                 >
                   {isTransferring ? (
                     <>
@@ -549,7 +561,7 @@ function UploadPage() {
       )}
 
       {error && !isTransferring && (
-        <div style={{ marginTop: '1.25rem' }}>
+        <div className="section-stack">
           <ErrorAlert message={error} onRetry={openConfirmation} />
         </div>
       )}
@@ -557,7 +569,7 @@ function UploadPage() {
       {/* Pre-Transfer Confirmation Modal */}
       {showConfirmModal && (
         <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Confirm Transfer Details">
-          <div className="preview-modal" style={{ maxWidth: '550px' }}>
+          <div className="preview-modal modal-narrow">
             <div className="preview-header">
               <h3><Shield size={20} /> Confirm Transfer Details</h3>
               <button className="preview-close" onClick={() => setShowConfirmModal(false)} aria-label="Close modal" ref={confirmCloseRef}>
@@ -565,27 +577,27 @@ function UploadPage() {
               </button>
             </div>
             <div className="preview-body">
-              <div className="security-notice" style={{ marginBottom: '1rem', marginTop: 0 }}>
+              <div className="security-notice confirmation-notice">
                 Please review your selected files and security settings before starting the encrypted transfer.
               </div>
 
-              <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
+              <div className="meta-item confirmation-row">
                 <label>Selected Files</label>
-                <span style={{ wordBreak: 'break-all' }}>{files.length} file(s) ({files.map(f => f.name).join(', ')})</span>
+                <span className="word-break">{files.length} file(s) ({files.map(f => f.name).join(', ')})</span>
               </div>
-              <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
+              <div className="meta-item confirmation-row">
                 <label>Total Size</label>
                 <span>{formatBytes(totalSelectedSize)}</span>
               </div>
-              <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
+              <div className="meta-item confirmation-row">
                 <label>Sharing Mode</label>
-                <span style={{ color: 'var(--secondary)' }}>
+                <span className="text-success">
                   {useSteganography && burnOnRead ? 'Burn-on-Read + Steganography' : useSteganography ? 'Image/Steganography' : burnOnRead ? 'Burn-on-Read' : 'Standard AES-256-GCM'}
                 </span>
               </div>
-              <div className="meta-item" style={{ marginBottom: '0.75rem' }}>
+              <div className="meta-item confirmation-row">
                 <label>Download Limit</label>
-                <span style={{ color: maxDownloads === 0 ? 'var(--secondary)' : undefined }}>
+                <span className={maxDownloads === 0 ? 'text-success' : ''}>
                   {maxDownloads === 0 ? 'Unlimited downloads until expiry' : maxDownloads === 1 ? '1 download (Burn-on-Read)' : `${maxDownloads} downloads`}
                 </span>
               </div>
@@ -617,23 +629,25 @@ function UploadPage() {
               </button>
             </div>
             <div className="preview-body">
-              {previewUrl && previewFile.type.startsWith('image/') && (
-                <div style={{ textAlign: 'center' }}>
+              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'image' && (
+                <div className="local-preview-media">
                   <img src={previewUrl} alt={previewFile.name} className="preview-image" />
                 </div>
               )}
-              {previewUrl && previewFile.type.startsWith('video/') && (
-                <div style={{ textAlign: 'center' }}>
-                  <video src={previewUrl} controls className="preview-video" />
+              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'video' && (
+                <div className="local-preview-media">
+                  <video src={previewUrl} controls autoPlay playsInline className="preview-video" />
                 </div>
               )}
-              {previewUrl && previewFile.type.startsWith('audio/') && (
+              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'audio' && (
                 <div className="preview-audio-wrapper">
-                  <audio src={previewUrl} controls className="preview-audio" />
+                  <audio src={previewUrl} controls autoPlay className="preview-audio" />
                 </div>
               )}
-              {previewUrl && previewFile.type === 'application/pdf' && (
-                <iframe src={previewUrl} title="PDF Preview" className="preview-pdf" />
+              {previewUrl && detectFileType(previewFile.name, previewFile.type).category === 'pdf' && (
+                <div className="preview-pdf-wrapper">
+                  <iframe src={previewUrl} title="PDF Preview" className="preview-pdf" />
+                </div>
               )}
               {previewText && (
                 <pre className="preview-text">{previewText}</pre>
@@ -641,7 +655,7 @@ function UploadPage() {
               {!previewUrl && !previewText && (
                 <div className="preview-unsupported-card">
                   <p>Binary or unsupported preview format.</p>
-                  <p style={{ color: 'var(--fg-muted)', fontSize: '0.85rem' }}>Size: {formatBytes(previewFile.size)}</p>
+                  <p className="preview-size">Size: {formatBytes(previewFile.size)}</p>
                 </div>
               )}
             </div>
@@ -657,7 +671,7 @@ function UploadPage() {
       {/* Share / Result Section */}
       {result && (
         <div className="share-section animate-in">
-          <h3><Shield size={22} style={{ color: 'var(--secondary)' }} /> Your Transfer Is Ready!</h3>
+          <h3><Shield size={22} className="share-heading-icon" /> Your Transfer Is Ready!</h3>
 
           <div className="status-message success">
             <Check size={18} />
@@ -678,7 +692,7 @@ function UploadPage() {
             </div>
           )}
 
-          <div className="file-meta" style={{ marginTop: '1rem' }}>
+          <div className="file-meta section-stack">
             <div className="meta-item">
               <label>Files</label>
               <span>{result.fileCount} file(s)</span>
@@ -699,10 +713,10 @@ function UploadPage() {
 
           {result.isBurn && (
             <div className="burn-banner">
-              <Flame size={24} style={{ color: 'var(--error)', flexShrink: 0 }} />
+              <Flame size={24} className="burn-icon" />
               <div>
-                <strong style={{ fontSize: '0.95rem', display: 'block' }}>Burn-on-Read Active</strong>
-                <span style={{ fontSize: '0.825rem' }}>
+                <strong className="burn-title">Burn-on-Read Active</strong>
+                <span className="burn-copy">
                   Permanently deletes from server after the recipient downloads.
                 </span>
               </div>
@@ -710,14 +724,14 @@ function UploadPage() {
           )}
 
           <div className="crypto-code-box">
-            <label style={{ color: 'var(--secondary)' }}><Key size={16} /> Transfer Code</label>
+            <label className="crypto-code-label--success"><Key size={16} /> Transfer Code</label>
             <div className="crypto-code-text">{result.transferCode}</div>
           </div>
 
           {shareUrl && (
             <div className="qr-code-box animate-in">
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <strong style={{ fontSize: '0.95rem', color: 'var(--fg-main)' }}>Scan QR Code to Download</strong>
+              <div className="qr-heading">
+                <strong className="qr-heading-title">Scan QR Code to Download</strong>
                 <span className="badge badge-primary">
                   Refreshes: {refreshCount}/{MAX_REFRESHES}
                 </span>
@@ -729,46 +743,38 @@ function UploadPage() {
 
               {!refreshLimitReached && (
                 <button
-                  className="btn btn-secondary btn-sm"
                   onClick={refreshQRToken}
                   disabled={isRefreshingToken}
-                  style={{ gap: '0.4rem' }}
+                  className="btn btn-secondary btn-sm refresh-button"
                 >
                   <RefreshCw size={14} className={isRefreshingToken ? 'spin' : ''} /> Refresh QR Token
                 </button>
               )}
 
               {refreshLimitReached && (
-                <div style={{ color: 'var(--error)', fontSize: '0.85rem', fontWeight: 600 }}>
+                <div className="limit-error">
                   QR refresh limit reached. Generate a new transfer if needed.
                 </div>
               )}
             </div>
           )}
 
-          <div className="share-actions-grid" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1.25rem' }}>
-            <button className="btn btn-primary btn-lg" onClick={handleCopyCode} style={{ width: '100%' }}>
+          <div className="share-actions">
+            <button className="btn btn-primary btn-lg full-width" onClick={handleCopyCode}>
               {copied ? <><Check size={18} /> Code Copied!</> : <><Copy size={18} /> Copy Transfer Code</>}
             </button>
-
-            {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
-              <button className="btn btn-secondary btn-lg" onClick={handleNativeShare} style={{ width: '100%' }}>
-                <Share2 size={18} /> Share with Apps (AirDrop / WhatsApp)
-              </button>
-            )}
           </div>
 
-          <button className="btn btn-secondary" onClick={handleClearAll} style={{ width: '100%', marginTop: '1.25rem', minHeight: '48px' }}>
+          <button className="btn btn-secondary button-block button-block--spaced" onClick={handleClearAll}>
             <Upload size={16} /> Send Another Transfer
           </button>
           {result.ownerToken && (
             <button
-              className="btn btn-secondary"
               onClick={async () => {
                 const ok = await cancelTransfer();
                 if (ok) handleClearAll();
               }}
-              style={{ width: '100%', marginTop: '0.75rem', minHeight: '48px', color: 'var(--error)' }}
+              className="btn btn-secondary button-block button-block-danger"
             >
               <Trash2 size={16} /> Cancel &amp; Delete This Transfer
             </button>

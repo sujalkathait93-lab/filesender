@@ -38,11 +38,31 @@ export class PreviewManager {
       previewData = previewUrl;
     } else if (detection.category === 'text') {
       try {
-        const textSlice = data ? data.slice(0, 100000) : new Uint8Array();
-        previewData = new TextDecoder('utf-8', { fatal: false }).decode(textSlice);
+        // Decode full text (safely up to 10 MB for browser DOM rendering performance)
+        const textBytes = data ? (data.byteLength > 10 * 1024 * 1024 ? data.slice(0, 10 * 1024 * 1024) : data) : new Uint8Array();
+        previewData = new TextDecoder('utf-8', { fatal: false }).decode(textBytes);
       } catch (_) {
         previewData = '(Unable to decode text content)';
         isDirect = false;
+      }
+    } else if (data && data.byteLength > 0 && data.byteLength <= 10 * 1024 * 1024) {
+      // Automatic text fallback for any unlisted code or readable text file
+      try {
+        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(data);
+        // Ensure it contains printable text (no large runs of null bytes)
+        const sample = decoded.slice(0, 1000);
+        const nonPrintableCount = (sample.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
+        if (nonPrintableCount / (sample.length || 1) < 0.05) {
+          previewData = decoded;
+          isDirect = true;
+          detection.category = 'text';
+        } else {
+          isDirect = false;
+          previewData = null;
+        }
+      } catch (_) {
+        isDirect = false;
+        previewData = null;
       }
     } else {
       isDirect = false;

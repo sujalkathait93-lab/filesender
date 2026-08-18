@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Shield, Upload, Download, Menu, X, Lock, Image as ImageIcon, Flame, Key, Zap, MousePointerClick, AlertTriangle, ArrowRight, CheckCircle2, ShieldCheck, Sparkles, Clock } from 'lucide-react'
 import { PageSkeletonLoader } from './components/Skeletons'
 import brandLogo from './image/icons.png'
+import { api } from './services/api'
 import './App.css'
 
 // Only load Vercel analytics when deployed on Vercel
@@ -41,16 +42,13 @@ function App() {
 
   const detectServer = async () => {
     try {
-      const res = await fetch('/api/health', { signal: AbortSignal.timeout(4000) });
-      const text = await res.text();
-      setServerOnline(res.ok);
-      if (res.ok) {
-        let body = null;
-        try { body = JSON.parse(text); } catch { body = null; }
-        setEphemeralStorage(body && body.persistent_storage === false);
-      }
+      const health = await api.health();
+      if (!health || health.status !== 'healthy') throw new Error('Health check failed');
+      setServerOnline(true);
+      setEphemeralStorage(health.persistent_storage === false);
     } catch (_) {
       setServerOnline(false);
+      setEphemeralStorage(false);
     }
   };
 
@@ -71,8 +69,8 @@ function App() {
               <span className="brand-text">FileShare</span>
               <span className="brand-quote-badge">Send, Share and Done</span>
             </div>
-            <span className="badge badge-primary nav-e2e-badge">
-              <ShieldCheck size={13} style={{ marginRight: '3px' }} /> E2E ENCRYPTED
+              <span className="badge badge-primary nav-e2e-badge">
+                <ShieldCheck size={13} className="badge-icon" /> E2E ENCRYPTED
             </span>
           </Link>
 
@@ -89,9 +87,9 @@ function App() {
           </div>
 
           <div className="nav-right">
-            <div className="network-badge" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'}>
+            <div className="network-badge network-badge-compact" data-type={serverOnline === null ? 'checking' : serverOnline ? 'online' : 'offline'} aria-live="polite">
               <div className="network-dot"></div>
-              <span>
+              <span className="network-label">
                 {serverOnline === null ? 'Checking...' : serverOnline ? 'Online' : 'Offline'}
               </span>
             </div>
@@ -112,8 +110,8 @@ function App() {
       {/* Mobile Drawer with Backdrop */}
       {mobileOpen && (
         <>
-          <div className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} />
-          <div className="mobile-menu-drawer" id="mobile-nav-drawer">
+          <button className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" />
+          <div className="mobile-menu-drawer" id="mobile-nav-drawer" role="dialog" aria-label="Navigation menu">
             <div className="mobile-drawer-brand">
               <img src={brandLogo} alt="FileShare Logo" className="brand-logo-img" />
               <div>

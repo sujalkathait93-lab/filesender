@@ -239,13 +239,11 @@ class TransferService:
             self._require_access_proof(row, proof)
 
             if preview:
-                preview_updated = conn.execute("""
+                conn.execute("""
                     UPDATE files
                     SET preview_count = COALESCE(preview_count, 0) + 1
-                    WHERE id = ? AND COALESCE(preview_count, 0) < ?
-                """, (file_id, MAX_PREVIEWS_PER_FILE))
-                if preview_updated.rowcount == 0:
-                    raise GoneError("Preview limit reached for this transfer")
+                    WHERE id = ?
+                """, (file_id,))
                 conn.commit()
                 new_count = row["download_count"]
             elif row["max_downloads"] > 0:

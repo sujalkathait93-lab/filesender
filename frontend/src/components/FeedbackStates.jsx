@@ -29,8 +29,8 @@ export function ErrorAlert({ message, onRetry }) {
 
   return (
     <div className="status-message error animate-in" role="alert">
-      <AlertTriangle size={20} style={{ flexShrink: 0 }} />
-      <div style={{ flex: 1 }}>{message}</div>
+      <AlertTriangle size={20} className="status-icon" />
+      <div className="status-message-copy">{message}</div>
       {onRetry && (
         <button
           className="btn btn-secondary error-retry-btn"
@@ -63,12 +63,14 @@ export function MeasurableProgressBar({ stage = 'Processing', percent = 0, statu
       <div className="progress-bar">
         <div
           className="progress-fill green-fill"
-          style={{ width: `${clampedPercent}%` }}
+          // The percentage is runtime data, so a CSS custom property is the
+          // only inline value needed by this reusable progress component.
+          style={{ '--progress-width': `${clampedPercent}%` }}
         />
       </div>
       <div className="progress-text">
         <span>{statusMessage || `${stage}...`}</span>
-        <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{clampedPercent}%</span>
+        <span className="progress-percent">{clampedPercent}%</span>
       </div>
     </div>
   );

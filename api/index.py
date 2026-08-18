@@ -62,23 +62,27 @@ def _register_error_handlers(app):
             index_path = os.path.join(dist_dir, "index.html")
             if os.path.isfile(index_path):
                 return send_from_directory(dist_dir, "index.html")
-        return jsonify({"detail": "Endpoint not found"}), 404
+        return jsonify({"error": "Endpoint not found", "code": "not_found", "status": 404, "detail": "Endpoint not found"}), 404
 
     @app.errorhandler(405)
     def handle_method_not_allowed(_):
-        return jsonify({"detail": "Method not allowed. Ensure the correct HTTP method is used."}), 405
+        message = "Method not allowed. Ensure the correct HTTP method is used."
+        return jsonify({"error": message, "code": "method_not_allowed", "status": 405, "detail": message}), 405
 
     @app.errorhandler(413)
     def handle_payload_too_large(_):
-        return jsonify({"detail": "Upload exceeds the maximum allowed size"}), 413
+        message = "Upload exceeds the maximum allowed size"
+        return jsonify({"error": message, "code": "payload_too_large", "status": 413, "detail": message}), 413
 
     @app.errorhandler(429)
     def handle_rate_limited(_):
-        return jsonify({"detail": "Too many requests. Please try again shortly."}), 429
+        message = "Too many requests. Please try again shortly."
+        return jsonify({"error": message, "code": "rate_limited", "status": 429, "detail": message}), 429
 
     @app.errorhandler(500)
     def handle_server_error(_):
-        return jsonify({"detail": "Internal server error"}), 500
+        message = "Internal server error"
+        return jsonify({"error": message, "code": "internal_error", "status": 500, "detail": message}), 500
 
 
 def _start_cleanup_thread(cleanup_service: CleanupService):

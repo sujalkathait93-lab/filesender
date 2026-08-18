@@ -94,14 +94,18 @@ export function useEncryptAndSend(stateMachine) {
         } catch (_) {}
       }
 
-      let bestUrl = `${window.location.origin}/download?code=${encodeURIComponent(transferCode)}`;
+      // The key stays in the URL fragment: browsers never send fragments to servers,
+      // proxies, analytics, or access logs. The visible transfer code remains available
+      // for people who prefer copying it into a chat.
+      const shareReference = `FS-${data.file_id.toUpperCase()}`;
+      let bestUrl = `${window.location.origin}/download?code=${encodeURIComponent(shareReference)}#key=${encodeURIComponent(encrypted.password)}`;
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       if (isLocal) {
         try {
           const netData = await api.networkInfo();
           const lanIp = (netData.local_ips || []).find(ip => ip !== '127.0.0.1' && !ip.startsWith('127.'));
           if (lanIp) {
-            bestUrl = `http://${lanIp}:5173/download?code=${encodeURIComponent(transferCode)}`;
+            bestUrl = `http://${lanIp}:5173/download?code=${encodeURIComponent(shareReference)}#key=${encodeURIComponent(encrypted.password)}`;
           }
         } catch (e) {
           console.warn("Failed to fetch network info for LAN sharing URL:", e);

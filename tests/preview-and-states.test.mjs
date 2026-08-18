@@ -120,8 +120,11 @@ async function runTests() {
   const p3 = parseTransferCode('https://fileshare.local/download?code=FS-4BE819D7-9F8A73C2');
   check('parse code from URL', p3.fileId === '4be819d7' && p3.key === '9f8a73c2');
 
-  const p4 = parseTransferCode('4be819d79f8a73c2');
-  check('parse raw 16-hex code', p4.fileId === '4be819d7' && p4.key === '9f8a73c2');
+  const p4 = parseTransferCode('https://fileshare.local/download?code=FS-4BE819D7#key=9F8A73C2');
+  check('parse fragment key from a share link', p4.fileId === '4be819d7' && p4.key === '9f8a73c2');
+
+  const p5 = parseTransferCode('4be819d79f8a73c2');
+  check('parse raw 16-hex code', p5.fileId === '4be819d7' && p5.key === '9f8a73c2');
   check('reject non-hex transfer input', isValidTransferCodeInput('not a code!') === false);
   check('accept FS transfer input', isValidTransferCodeInput('FS-4BE819D7-9F8A73C2') === true);
 

@@ -15,12 +15,19 @@ async function parseResponse(response) {
   const body = isJson ? await response.json().catch(() => null) : null;
 
   if (!response.ok) {
-    const detail = body && typeof body.detail === 'string' ? body.detail : null;
+    const detail = body && (typeof body.detail === 'string' ? body.detail : body.error);
     const err = new Error(detail || `Request failed (${response.status})`);
     err.status = response.status;
     err.body = body;
     throw err;
   }
+
+  if (!isJson) {
+    const err = new Error('The server returned an unexpected response. Check that the API URL is public and configured correctly.');
+    err.status = response.status;
+    throw err;
+  }
+
   return body;
 }
 

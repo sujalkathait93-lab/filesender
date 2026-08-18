@@ -17,7 +17,7 @@ export function extractKeyFromUrl() {
   const hash = window.location.hash || '';
   const match = hash.match(/key=([^&]+)/);
   if (match && match[1]) {
-    return decodeURIComponent(match[1]);
+    return decodeURIComponent(match[1]).toLowerCase();
   }
   return null;
 }
@@ -38,26 +38,29 @@ export function createTransferCode(fileId, password) {
 export function parseTransferCode(input) {
   if (!input) return { fileId: null, key: null, valid: false };
   let str = input.trim();
+  let urlKey = null;
+
+  const result = (fileId, key, valid) => ({
+    fileId,
+    key: key || urlKey,
+    valid
+  });
 
   // Extract from full URL if pasted
   if (str.startsWith('http://') || str.startsWith('https://')) {
     try {
       const url = new URL(str);
+      const hashMatch = url.hash.match(/key=([^&]+)/);
+      urlKey = hashMatch ? decodeURIComponent(hashMatch[1]).toLowerCase() : null;
       const qCode = url.searchParams.get('code');
       if (qCode) {
         str = qCode;
       } else {
-        const hashMatch = url.hash.match(/key=([^&]+)/);
-        const urlKey = hashMatch ? decodeURIComponent(hashMatch[1]) : null;
         const pathParts = url.pathname.split('/').filter(Boolean);
         if (pathParts.length > 0) {
           const lastPart = pathParts[pathParts.length - 1];
           if (lastPart !== 'download') {
-            return {
-              fileId: lastPart.toLowerCase(),
-              key: urlKey ? urlKey.toLowerCase() : null,
-              valid: Boolean(lastPart)
-            };
+            return result(lastPart.toLowerCase(), null, Boolean(lastPart));
           }
         }
       }
@@ -70,17 +73,9 @@ export function parseTransferCode(input) {
     if (upper.startsWith(prefix)) {
       const parts = str.slice(prefix.length).split(/[-:]/);
       if (parts.length >= 2) {
-        return {
-          fileId: parts[0].toLowerCase(),
-          key: parts.slice(1).join('-').toLowerCase(),
-          valid: true
-        };
+        return result(parts[0].toLowerCase(), parts.slice(1).join('-').toLowerCase(), true);
       } else if (parts.length === 1 && parts[0]) {
-        return {
-          fileId: parts[0].toLowerCase(),
-          key: null,
-          valid: true
-        };
+        return result(parts[0].toLowerCase(), null, true);
       }
     }
   }
@@ -89,41 +84,21 @@ export function parseTransferCode(input) {
   if (str.includes('-') || str.includes(':')) {
     const parts = str.split(/[-:]/).filter(Boolean);
     if (parts.length >= 2) {
-      return {
-        fileId: parts[0].toLowerCase(),
-        key: parts.slice(1).join('-').toLowerCase(),
-        valid: true
-      };
+      return result(parts[0].toLowerCase(), parts.slice(1).join('-').toLowerCase(), true);
     }
   }
 
   // Handle raw combined hex: 16+16 (current) or legacy 8+8
   const cleaned = str.replace(/[\s-]/g, '').toLowerCase();
   if (/^[0-9a-f]+$/.test(cleaned) && cleaned.length >= 32) {
-    return {
-      fileId: cleaned.slice(0, 16),
-      key: cleaned.slice(16),
-      valid: true
-    };
+    return result(cleaned.slice(0, 16), cleaned.slice(16), true);
   } else if (/^[0-9a-f]+$/.test(cleaned) && cleaned.length >= 16) {
-    return {
-      fileId: cleaned.slice(0, 8),
-      key: cleaned.slice(8) || null,
-      valid: true
-    };
+    return result(cleaned.slice(0, 8), cleaned.slice(8) || null, true);
   } else if (cleaned.length >= 8) {
-    return {
-      fileId: cleaned.slice(0, 8),
-      key: cleaned.slice(8) || null,
-      valid: Boolean(cleaned)
-    };
+    return result(cleaned.slice(0, 8), cleaned.slice(8) || null, Boolean(cleaned));
   }
 
-  return {
-    fileId: str.toLowerCase() || null,
-    key: null,
-    valid: Boolean(str)
-  };
+  return result(str.toLowerCase() || null, null, Boolean(str));
 }
 
 /**

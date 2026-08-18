@@ -15,14 +15,18 @@ export function detectFileType(fileName = '', mimeType = '') {
   const ext = (fileName || '').split('.').pop().toLowerCase();
   const mime = (mimeType || '').toLowerCase();
 
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
-  const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'ogv'];
-  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'];
-  const docExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods'];
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'apng', 'jfif', 'pjpeg', 'pjp', 'tif', 'tiff'];
+  const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'ogv', 'mkv', 'avi', 'wmv', 'flv', '3gp', '3g2', 'ts'];
+  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'mid', 'midi', 'aiff'];
   const textExts = [
-    'txt', 'csv', 'json', 'js', 'jsx', 'ts', 'tsx', 'py', 'html', 'css',
-    'md', 'xml', 'log', 'yaml', 'yml', 'sh', 'sql', 'env', 'c', 'cpp', 'h', 'java'
+    'txt', 'csv', 'tsv', 'json', 'js', 'jsx', 'ts', 'tsx', 'py', 'pyw', 'html', 'htm', 'xhtml', 'css',
+    'md', 'markdown', 'mdown', 'xml', 'log', 'yaml', 'yml', 'sh', 'bash', 'zsh', 'sql', 'env',
+    'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx', 'cs', 'java', 'rs', 'go', 'php', 'rb', 'swift',
+    'kt', 'kts', 'dart', 'scala', 'r', 'lua', 'toml', 'ini', 'cfg', 'conf', 'dockerfile',
+    'bat', 'cmd', 'ps1', 'psm1', 'graphql', 'gql', 'scss', 'sass', 'less', 'vue', 'svelte',
+    'tex', 'rst', 'diff', 'patch', 'properties', 'reg', 'gitignore', 'gitattributes', 'lock', 'json5'
   ];
+  const docExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods'];
 
   if (imageExts.includes(ext) || mime.startsWith('image/')) {
     return { category: 'image', ext, mime: mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`, canPreviewDirectly: true };
@@ -36,7 +40,16 @@ export function detectFileType(fileName = '', mimeType = '') {
   if (ext === 'pdf' || mime === 'application/pdf') {
     return { category: 'pdf', ext, mime: 'application/pdf', canPreviewDirectly: true };
   }
-  if (textExts.includes(ext) || mime.startsWith('text/') || mime === 'application/json') {
+  if (
+    textExts.includes(ext) ||
+    mime.startsWith('text/') ||
+    mime.includes('json') ||
+    mime.includes('javascript') ||
+    mime.includes('xml') ||
+    mime.includes('yaml') ||
+    mime.includes('sql') ||
+    mime.includes('toml')
+  ) {
     return { category: 'text', ext, mime: mime || 'text/plain', canPreviewDirectly: true };
   }
   if (docExts.includes(ext)) {
