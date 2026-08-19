@@ -44,7 +44,7 @@ function UploadPage() {
   const [useSteganography, setUseSteganography] = useState(false);
   const [burnOnRead, setBurnOnRead] = useState(false);
   const [maxDownloads, setMaxDownloads] = useState(10);
-  const [expiryHours, setExpiryHours] = useState(1);
+  const [expiryHours, setExpiryHours] = useState(60);
   const [useP2P, setUseP2P] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
 

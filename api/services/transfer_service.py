@@ -68,7 +68,7 @@ class TransferService:
             self.storage.delete_file(file_id)
             raise
 
-        expires_at = get_utc_now() + timedelta(hours=expiry_hours)
+        expires_at = get_utc_now() + timedelta(seconds=form_data["expiry_seconds"])
         effective_max_downloads = max_downloads
 
         conn = self.db.get_connection()
@@ -129,7 +129,7 @@ class TransferService:
         file_id = generate_id()
         transfer_id = transfer_id or file_id
         owner_token = generate_owner_token()
-        expires_at = get_utc_now() + timedelta(hours=expiry_hours)
+        expires_at = get_utc_now() + timedelta(seconds=form_data["expiry_seconds"])
         effective_max_downloads = max_downloads
 
         conn = self.db.get_connection()

@@ -2,9 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import { Shield, X } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 
-export const formatExpiryLabel = (hours) => {
-  const mins = Math.round(hours * 60);
-  return `${mins} minutes`;
+export const formatExpiryLabel = (seconds) => {
+  const s = Math.round(seconds <= 1 ? seconds * 60 : seconds);
+  return `${s} seconds`;
 };
 
 /**

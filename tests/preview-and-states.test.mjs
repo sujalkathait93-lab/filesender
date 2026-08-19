@@ -167,7 +167,7 @@ async function runTests() {
     totalSize: '45.2 MB'
   });
   check('share message contains transfer code', shareMsg.includes('Code: FS-4BE81-9F8A7'));
-  check('share message contains link and expiry in minutes', shareMsg.includes('Link:') && shareMsg.includes('Expires: 60 minutes'));
+  check('share message contains link and expiry in seconds', shareMsg.includes('Link:') && shareMsg.includes('Expires: 60 seconds'));
 
   console.log(`\n== ${passed} passed, ${failed} failed ==`);
   process.exit(failed ? 1 : 0);

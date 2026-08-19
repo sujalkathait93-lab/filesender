@@ -208,23 +208,23 @@ export function VaultSettings({
         </select>
       </div>
 
-      {/* Expiry selection */}
+      {/* Expiry Countdown selection (15, 30, 45, 60 seconds) */}
       <div className="expiry-row">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Clock size={16} className="field-icon" />
-          <label htmlFor="expiry-select">Code Expiry (TTL)</label>
+          <label htmlFor="expiry-select">Expiry Countdown</label>
         </div>
         <select
           id="expiry-select"
           value={expiryHours}
           disabled={isTransferring}
           onChange={(e) => setExpiryHours(Number(e.target.value))}
-          aria-label="Select code expiration time"
+          aria-label="Select code expiration time in seconds"
         >
-          <option value={0.25}>15 minutes</option>
-          <option value={0.5}>30 minutes</option>
-          <option value={0.75}>45 minutes</option>
-          <option value={1}>60 minutes (Max)</option>
+          <option value={15}>15 seconds</option>
+          <option value={30}>30 seconds</option>
+          <option value={45}>45 seconds</option>
+          <option value={60}>60 seconds (Standard)</option>
         </select>
       </div>
     </div>

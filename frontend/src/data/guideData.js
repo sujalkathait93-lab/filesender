@@ -24,7 +24,7 @@ export const FILE_SHARING_LIFECYCLE_STEPS = [
   {
     step: 3,
     title: 'Choose Settings',
-    desc: 'Select download limits (1 to 100 or Unlimited) and code expiry (15 to 60 min).',
+    desc: 'Select download limits (1 to 100 or Unlimited) and code expiry (15 to 60 sec).',
     detail: 'Optionally enable Burn After Read, Steganography Vault, or Direct P2P.'
   },
   {
@@ -169,21 +169,21 @@ export const FEATURE_EXPLANATIONS = [
   {
     id: 'auto_expiry',
     icon: Clock,
-    title: 'Code Expiry & Time-To-Live (TTL)',
-    badge: 'Automatic Purge',
+    title: 'Code Expiry & Countdown (TTL)',
+    badge: '15 to 60 SECONDS',
     badgeColor: 'badge-amber',
-    whatIsIt: 'Configurable countdown timer (15, 30, 45, or 60 minutes) that automatically deletes files when time runs out.',
-    whyUseIt: 'Guarantees that files do not linger on the server indefinitely if a recipient forgets to download.',
+    whatIsIt: 'Configurable live countdown timer (15, 30, 45, or 60 seconds) that automatically deletes files when time runs out.',
+    whyUseIt: 'Guarantees ephemeral zero-knowledge privacy with instant automatic deletion.',
     howToUse: [
-      'Select Code Expiry on the Upload page: 15 min, 30 min, 45 min, or 60 min.',
+      'Select Expiry Countdown on the Upload page: 15s, 30s, 45s, or 60s.',
       'The countdown begins as soon as the transfer is created.',
-      'When the timer reaches zero, the background cleanup worker immediately purges all data.'
+      'When the timer reaches zero, all server ciphertext and sessions are immediately purged.'
     ],
     whatHappensNext: 'Once expired, attempting to use the link or code displays a clear "File Expired — Time limit reached" explanation.',
-    important: 'Maximum expiry duration is 60 minutes to ensure ephemeral privacy and prevent server clutter.',
+    important: 'Maximum expiry duration is 60 seconds for strict ephemeral file transfer security.',
     whereStored: 'Expiry timestamp stored in database index for sub-millisecond automated cleanup.',
     whenDeleted: 'Purged immediately upon reaching the exact expiry timestamp.',
-    example: 'Setting a 15-minute expiry for a one-time passcode verification file shared with a coworker.'
+    example: 'Setting a 30-second expiry for a one-time passcode or private document shared with a recipient.'
   },
   {
     id: 'previews_and_bundles',

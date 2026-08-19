@@ -130,7 +130,8 @@ export function useEncryptAndSend(stateMachine) {
         compressed: encrypted.compressed ? '1' : '0',
         max_downloads: effectiveMaxDownloads.toString(),
         burn_on_read: burnOnRead ? '1' : '0',
-        expiry_hours: expiryHours.toString(),
+        expiry_seconds: (expiryHours <= 1 ? Math.round(expiryHours * 60) : Math.round(expiryHours)).toString(),
+        expiry_hours: (expiryHours >= 15 ? (expiryHours / 3600).toFixed(6) : expiryHours.toString()),
         sharing_mode: useSteganography && burnOnRead ? 'both' : useSteganography ? 'steganography' : burnOnRead ? 'burn_on_read' : 'standard',
         checksum: buildChunkMarker(encrypted.chunked),
         access_hash: await computeAccessProof(encrypted.password)

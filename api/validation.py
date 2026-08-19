@@ -81,6 +81,16 @@ def validate_upload_form(form: dict) -> dict:
     if burn_on_read and (raw_max is None or raw_max == "" or raw_max == "10"):
         max_downloads = 1
 
+    expiry_seconds_val = form.get("expiry_seconds")
+    if expiry_seconds_val is not None and expiry_seconds_val != "":
+        expiry_seconds = _to_int(expiry_seconds_val, 60, 10, 3600, "expiry_seconds")
+        expiry_hours = expiry_seconds / 3600.0
+    else:
+        expiry_hours = _to_float(
+            form.get("expiry_hours"), 1.0, MIN_EXPIRY_HOURS, MAX_EXPIRY_HOURS, "expiry_hours"
+        )
+        expiry_seconds = int(expiry_hours * 3600)
+
     return {
         "iv": iv.lower(),
         "salt": salt.lower(),
@@ -89,9 +99,8 @@ def validate_upload_form(form: dict) -> dict:
         "compressed": _to_int(form.get("compressed"), 1, 0, 1, "compressed"),
         "max_downloads": max_downloads,
         "burn_on_read": burn_on_read,
-        "expiry_hours": _to_float(
-            form.get("expiry_hours"), 1.0, MIN_EXPIRY_HOURS, MAX_EXPIRY_HOURS, "expiry_hours"
-        ),
+        "expiry_seconds": expiry_seconds,
+        "expiry_hours": expiry_hours,
         "sharing_mode": sharing_mode,
         "transfer_id": transfer_id,
         "checksum": checksum,

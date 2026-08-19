@@ -150,8 +150,8 @@ export function createShareMessage({ transferCode, shareUrl, expiryHours, fileCo
     parts.push(`Link: ${shareUrl}`);
   }
   if (expiryHours) {
-    const mins = Math.round(expiryHours * 60);
-    parts.push(`Expires: ${mins} minutes`);
+    const secs = Math.round(expiryHours >= 15 ? expiryHours : (expiryHours <= 1 ? expiryHours * 60 : expiryHours));
+    parts.push(`Expires: ${secs} seconds`);
   }
   if (fileCount && totalSize) {
     parts.push(`Files: ${fileCount} file${fileCount > 1 ? 's' : ''} (${totalSize})`);
