@@ -11,6 +11,7 @@ import { embedPayloadInImage } from '../steganography';
 import { api } from '../services/api';
 import { createProgressThrottle } from '../services/progress';
 import { TransferState } from '../stateMachine';
+import { saveTransferToHistory } from '../services/transferHistory';
 
 const STEGO_MAX_PAYLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_REFRESHES = 5;
@@ -171,7 +172,7 @@ export function useEncryptAndSend(stateMachine) {
       throttle.push(updateProgressWithMetrics('complete', 100, totalSelectedSize));
       throttle.flush();
 
-      setResult({
+      const resultPayload = {
         fileId: data.file_id,
         transferId: data.transfer_id || data.file_id,
         transferCode,
@@ -186,6 +187,21 @@ export function useEncryptAndSend(stateMachine) {
         ownerToken: data.owner_token || null,
         smartOptimization: primarySmart || smartAnalysis,
         isSmartOptimized: !customSettings
+      };
+
+      setResult(resultPayload);
+
+      // Save to local sender transfer history for dashboard telemetry
+      saveTransferToHistory({
+        fileId: data.file_id,
+        transferCode,
+        fileName: packaged.name,
+        fileSize: totalSelectedSize,
+        fileCount: files.length,
+        expiresAt: data.expires_at,
+        maxDownloads: effectiveMaxDownloads,
+        burnOnRead,
+        ownerToken: data.owner_token || null
       });
     } catch (err) {
       const status = err.status;

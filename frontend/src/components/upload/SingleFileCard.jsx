@@ -1,12 +1,12 @@
-import React from 'react';
-import { Eye, X, ChevronUp, ChevronDown, Zap, Sliders, Settings2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Eye, X, ChevronUp, ChevronDown, Zap, Sliders, Settings2, Image as ImageIcon } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 import { OPTIMIZATION_TIERS } from '../../services/smartTransferOptimizer';
 import { FileCategoryIcon } from '../common/FileCategoryIcon';
 
 /**
  * SingleFileCard Component
- * Primary Responsibility: Render single-file metadata, smart metrics accordion, and manual optimization override controls.
+ * Primary Responsibility: Render single-file visual preview thumbnail, metadata, smart metrics, and optimization override controls.
  */
 export function SingleFileCard({
   file,
@@ -22,22 +22,60 @@ export function SingleFileCard({
   onOpenPreview,
   onRemoveFile
 }) {
+  const [thumbUrl, setThumbUrl] = useState(null);
+
+  useEffect(() => {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      setThumbUrl(null);
+      return undefined;
+    }
+    let url = null;
+    try {
+      url = URL.createObjectURL(file);
+      setThumbUrl(url);
+    } catch (_) {}
+
+    return () => {
+      if (url) {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+      }
+    };
+  }, [file]);
+
   if (!file || !currentOpt) return null;
 
   return (
     <div className="smart-single-card animate-in">
       <div className="smart-single-header">
-        <div className="file-icon file-icon--success">
-          <FileCategoryIcon fileName={file.name} mimeType={file.type} size={18} />
-        </div>
+        {/* Visual Thumbnail or Category Icon */}
+        {thumbUrl ? (
+          <div
+            className="file-thumb-container"
+            onClick={() => onOpenPreview(file)}
+            title="Click to zoom image preview"
+            role="button"
+            tabIndex={0}
+          >
+            <img src={thumbUrl} alt={file.name} className="file-thumb-img" />
+            <div className="file-thumb-overlay">
+              <Eye size={14} />
+            </div>
+          </div>
+        ) : (
+          <div className="file-icon file-icon--success">
+            <FileCategoryIcon fileName={file.name} mimeType={file.type} size={20} />
+          </div>
+        )}
+
         <div className="smart-single-info">
-          <div className="smart-single-name">{file.name}</div>
+          <div className="smart-single-name" title={file.name}>{file.name}</div>
           <div className="smart-single-sub">
-            <span>{formatBytes(file.size)}</span>
+            <span className="file-size-badge">{formatBytes(file.size)}</span>
             <span className="dot-sep">•</span>
             <span className="smart-mode-tag">{currentOpt.mode}</span>
           </div>
         </div>
+
         <div className="file-row-actions">
           <button
             className="btn btn-secondary btn-sm"
@@ -47,6 +85,7 @@ export function SingleFileCard({
             }}
             disabled={isTransferring}
             title={`Preview ${file.name}`}
+            aria-label={`Preview ${file.name}`}
           >
             <Eye size={13} /> Preview
           </button>
@@ -69,7 +108,7 @@ export function SingleFileCard({
           onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
           aria-expanded={showAdvancedDetails}
         >
-          <span>Advanced Details</span>
+          <span>Optimization Telemetry</span>
           {showAdvancedDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
       </div>
@@ -84,7 +123,7 @@ export function SingleFileCard({
             </div>
             <div className="smart-metric-item">
               <span className="smart-metric-label">Chunk Size</span>
-              <strong className="smart-metric-val">{currentOpt.chunkSizeLabel || 'None'}</strong>
+              <strong className="smart-metric-val">{currentOpt.chunkSizeLabel || 'Direct Stream'}</strong>
             </div>
             <div className="smart-metric-item">
               <span className="smart-metric-label">Buffer Level</span>

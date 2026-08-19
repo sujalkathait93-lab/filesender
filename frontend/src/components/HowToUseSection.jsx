@@ -24,7 +24,7 @@ const QuickPickSection = memo(function QuickPickSection() {
         <span className="section-tag">QUICK DECISION GUIDE</span>
         <h2 className="section-title">Which Feature Should You Use?</h2>
         <p className="section-subtitle">
-          Find the exact right sharing mode for your needs in one second.
+          Find the exact right sharing mode for your files in one second.
         </p>
       </div>
 
@@ -62,7 +62,7 @@ const FileSharingLifecycleSection = memo(function FileSharingLifecycleSection() 
         <span className="section-tag">COMPLETE PROCESS WALKTHROUGH</span>
         <h2 className="section-title">How File Sharing Works (9 Simple Steps)</h2>
         <p className="section-subtitle">
-          From file selection to instant decryption and permanent cleanup.
+          From file selection to instant decryption and permanent server cleanup.
         </p>
       </div>
 
@@ -84,6 +84,7 @@ const FileSharingLifecycleSection = memo(function FileSharingLifecycleSection() 
 
 /**
  * Point-Wise Feature Explanation Deep-Dive Cards
+ * Rebuilt as a clean, responsive card grid with zero text-truncations
  */
 const FeatureDeepDiveSection = memo(function FeatureDeepDiveSection({ activeId, onSelectFeature }) {
   const activeFeature = FEATURE_EXPLANATIONS.find((f) => f.id === activeId) || FEATURE_EXPLANATIONS[0];
@@ -95,31 +96,34 @@ const FeatureDeepDiveSection = memo(function FeatureDeepDiveSection({ activeId, 
         <span className="section-tag">POINT-WISE FEATURE EXPLANATIONS</span>
         <h2 className="section-title">Every Feature Explained Clearly</h2>
         <p className="section-subtitle">
-          Click any feature below to see what it does, why to use it, limits, and where data is stored.
+          Select any feature card below to see how it works, limits, and where data is stored.
         </p>
       </div>
 
-      {/* Feature Selector Tabs */}
-      <div className="guide-tabs-container" role="tablist">
+      {/* Responsive Feature Grid (No ugly wrapping tabs or ellipses) */}
+      <div className="features-card-selector-grid" role="tablist">
         {FEATURE_EXPLANATIONS.map((feat) => {
           const FeatIcon = feat.icon;
           const isActive = activeId === feat.id;
           return (
-            <button
+            <div
               key={feat.id}
               role="tab"
+              tabIndex={0}
               aria-selected={isActive}
-              className={`guide-tab-btn ${isActive ? 'active' : ''}`}
+              className={`feature-selector-card ${isActive ? 'feature-selector-card--active' : ''}`}
               onClick={() => onSelectFeature(feat.id)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectFeature(feat.id)}
             >
-              <div className="guide-tab-icon">
-                <FeatIcon size={18} />
+              <div className="feature-card-icon-row">
+                <div className={`feature-card-icon-wrap ${isActive ? 'icon-wrap--active' : ''}`}>
+                  <FeatIcon size={20} />
+                </div>
+                <span className={`badge ${feat.badgeColor}`}>{feat.badge}</span>
               </div>
-              <div className="guide-tab-info">
-                <span className="guide-tab-title">{feat.title.split('(')[0].trim()}</span>
-                <span className="guide-tab-subtitle">{feat.badge}</span>
-              </div>
-            </button>
+              <h4 className="feature-card-name">{feat.title}</h4>
+              <p className="feature-card-snippet">{feat.whatIsIt}</p>
+            </div>
           );
         })}
       </div>
@@ -202,6 +206,7 @@ const FeatureDeepDiveSection = memo(function FeatureDeepDiveSection({ activeId, 
 
 /**
  * Storage & Privacy Architecture Section
+ * Standardized 4-card responsive grid
  */
 const StoragePolicySection = memo(function StoragePolicySection() {
   return (
@@ -210,7 +215,7 @@ const StoragePolicySection = memo(function StoragePolicySection() {
         <span className="section-tag">SECURITY &amp; DATA STORAGE</span>
         <h2 className="section-title">Where Your Data Is Stored</h2>
         <p className="section-subtitle">
-          Transparent separation of structured metadata, temporary ciphertext, and device cache.
+          Transparent separation of structured metadata, temporary ciphertext blobs, and client cache.
         </p>
       </div>
 
@@ -218,7 +223,7 @@ const StoragePolicySection = memo(function StoragePolicySection() {
         {DATA_STORAGE_POLICY.sections.map((sec, idx) => (
           <div key={idx} className="storage-policy-card">
             <div className="storage-policy-header">
-              <strong>{sec.category}</strong>
+              <strong className="storage-card-category">{sec.category}</strong>
               <span className="badge badge-slate">{sec.storageLocation}</span>
             </div>
             <ul className="storage-policy-points">
@@ -247,7 +252,7 @@ const ModeComparisonTable = memo(function ModeComparisonTable() {
         <span className="section-tag">FEATURE BREAKDOWN</span>
         <h2 className="section-title">Compare Transfer Modes</h2>
         <p className="section-subtitle">
-          Quick side-by-side comparison of privacy, storage, and limits.
+          Side-by-side comparison of privacy levels, limits, and server storage.
         </p>
       </div>
 
@@ -305,7 +310,7 @@ const FaqAccordionSection = memo(function FaqAccordionSection({ expandedIndex, o
         <span className="section-tag">FREQUENTLY ASKED QUESTIONS</span>
         <h2 className="section-title">Common Questions &amp; Answers</h2>
         <p className="section-subtitle">
-          Quick answers to help you understand how files stay private, secure, and ephemeral.
+          Quick answers to help you understand zero-knowledge privacy, burn on read, and automatic purging.
         </p>
       </div>
 
@@ -352,7 +357,7 @@ const CtaBannerSection = memo(function CtaBannerSection() {
         </div>
         <h3 className="guide-cta-title">Send Your First Encrypted File Now</h3>
         <p className="guide-cta-desc">
-          Zero registrations, zero software to install, and zero keys on our servers. Send, Share and Done.
+          Zero accounts, zero cookies required, and zero keys on our servers. Send, Share and Done.
         </p>
         <div className="guide-cta-buttons">
           <Link to="/upload" className="btn btn-primary btn-lg">

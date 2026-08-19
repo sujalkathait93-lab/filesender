@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, ArrowLeft, Loader2, Lock, Trash2 } from 'lucide-react';
+import { Upload, ArrowLeft, Loader2, Lock, Trash2, History } from 'lucide-react';
 import { copyToClipboard } from '../crypto';
 import { TransferStateMachine, TransferState } from '../stateMachine';
 import { detectFileType } from '../utils/fileType';
@@ -19,10 +19,11 @@ import { TransferConfirmModal } from '../components/upload/TransferConfirmModal'
 import { LocalFilePreviewModal } from '../components/upload/LocalFilePreviewModal';
 import { FeatureGuideModal } from '../components/upload/FeatureGuideModal';
 import { ShareResultCard } from '../components/upload/ShareResultCard';
+import { SenderHistoryDashboard } from '../components/upload/SenderHistoryDashboard';
 
 /**
  * Upload Page Orchestrator Component
- * Primary Responsibility: Manage state for upload workflows, orchestrating file selection, options, modals, and upload progression.
+ * Primary Responsibility: Manage state for upload workflows, orchestrating file selection, options, modals, upload progression, and sender history dashboard.
  */
 function UploadPage() {
   const navigate = useNavigate();
@@ -245,7 +246,7 @@ function UploadPage() {
 
       <div className="page-header">
         <h2><Upload size={22} /> Send Files</h2>
-        <p>Drop your file(s) below. Automatically analyzed and optimized for highest speed and zero-knowledge encryption.</p>
+        <p>Drop your file(s) below. Automatically analyzed and protected with zero-knowledge browser encryption.</p>
       </div>
 
       <div className="wizard-steps" role="navigation" aria-label="Transfer Steps">
@@ -423,25 +424,28 @@ function UploadPage() {
         onClose={() => setShowGuideModal(false)}
       />
 
-      <ShareResultCard
-        result={result}
-        shareUrl={shareUrl}
-        useP2P={useP2P}
-        p2pState={p2pState}
-        p2pStatus={p2pStatus}
-        stegoSkipped={stegoSkipped}
-        expiryHours={expiryHours}
-        copied={copied}
-        refreshCount={refreshCount}
-        isRefreshingToken={isRefreshingToken}
-        refreshLimitReached={refreshLimitReached}
-        onRefreshQRToken={refreshQRToken}
-        onCopyCode={handleCopyCode}
-        onClearAll={handleClearAll}
-        onCancelTransfer={async () => {
-          const ok = await cancelTransfer();
-          if (ok) handleClearAll();
-        }}
+      {result && (
+        <ShareResultCard
+          result={result}
+          shareUrl={shareUrl}
+          copied={copied}
+          onCopy={handleCopyCode}
+          onNewUpload={handleClearAll}
+          onCancel={async () => {
+            const ok = await cancelTransfer();
+            if (ok) handleClearAll();
+          }}
+          isCancelling={false}
+          onRefreshQRToken={refreshQRToken}
+          isRefreshingToken={isRefreshingToken}
+          refreshCount={refreshCount}
+          refreshLimitReached={refreshLimitReached}
+        />
+      )}
+
+      {/* Sender History Dashboard */}
+      <SenderHistoryDashboard
+        activeTransferId={result?.fileId}
       />
     </div>
   );
