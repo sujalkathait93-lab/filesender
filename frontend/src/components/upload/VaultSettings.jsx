@@ -159,7 +159,7 @@ export function VaultSettings({
           onChange={(e) => onMaxDownloadsChange(e.target.value)}
         >
           <option value={0}>Unlimited (until expiry)</option>
-          <option value={1}>1 download (Burn-on-Read)</option>
+          <option value={1}>1 download</option>
           <option value={5}>5 downloads</option>
           <option value={10}>10 downloads (Standard)</option>
           <option value={20}>20 downloads</option>

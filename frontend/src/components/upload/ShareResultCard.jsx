@@ -67,11 +67,11 @@ export function ShareResultCard({
         <div className="meta-item">
           <label>Downloads</label>
           <span>
-            {result.maxDownloads === 0
-              ? 'Unlimited'
-              : result.maxDownloads === 1
+            {result.isBurn
               ? '1 (Burn on read)'
-              : `${result.maxDownloads} downloads`}
+              : result.maxDownloads === 0
+              ? 'Unlimited'
+              : `${result.maxDownloads} download${result.maxDownloads === 1 ? '' : 's'}`}
           </span>
         </div>
         <div className="meta-item">

@@ -88,9 +88,9 @@ export function TransferConfirmModal({
             <span>
               {maxDownloads === 0
                 ? 'Unlimited'
-                : maxDownloads === 1
+                : burnOnRead
                 ? '1 download (Burn-on-Read)'
-                : `${maxDownloads} downloads`}
+                : `${maxDownloads} download${maxDownloads === 1 ? '' : 's'}`}
             </span>
           </div>
           <div className="confirmation-row" style={{ borderBottom: 'none' }}>

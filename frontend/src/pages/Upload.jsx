@@ -137,9 +137,7 @@ function UploadPage() {
   const handleMaxDownloadsChange = (val) => {
     const num = Number(val);
     setMaxDownloads(num);
-    if (num === 1) {
-      setBurnOnRead(true);
-    } else {
+    if (num !== 1 && burnOnRead) {
       setBurnOnRead(false);
     }
   };
