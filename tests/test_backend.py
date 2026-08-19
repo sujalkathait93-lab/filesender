@@ -307,7 +307,18 @@ def run_all_tests():
     }, content_type="multipart/form-data")
     fid14 = r14.get_json()["file_id"]
     r14_prev = client.get(f"/api/download/{fid14}?preview=true")
-    check("Scenario 14: Image preview returns 200 without burning", r14_prev.status_code == 200 and storage_mgr.file_exists(fid14))
+    # Fully consume the stream to execute generator finally blocks
+    r14_prev_data = r14_prev.data
+    check("Scenario 14: Image preview returns 200 without burning", r14_prev.status_code == 200 and r14_prev_data == b"image-binary-stream" and storage_mgr.file_exists(fid14))
+
+    r14_prev2 = client.get(f"/api/download/{fid14}?preview=1")
+    r14_prev2_data = r14_prev2.data
+    check("Scenario 14: Second image preview (?preview=1) succeeds without burning", r14_prev2.status_code == 200 and storage_mgr.file_exists(fid14))
+
+    r14_down = client.get(f"/api/download/{fid14}")
+    r14_down_data = r14_down.data
+    check("Scenario 14: Subsequent actual download succeeds", r14_down.status_code == 200 and r14_down_data == b"image-binary-stream")
+    check("Scenario 14: File purged after actual download", not storage_mgr.file_exists(fid14))
 
     r15 = client.post("/api/upload", data={
         "file": (io.BytesIO(b"pdf-binary-stream"), "report.pdf.encrypted"),
@@ -319,7 +330,8 @@ def run_all_tests():
     }, content_type="multipart/form-data")
     fid15 = r15.get_json()["file_id"]
     r15_prev = client.get(f"/api/download/{fid15}?preview=true")
-    check("Scenario 15: PDF preview returns 200 without burning", r15_prev.status_code == 200 and storage_mgr.file_exists(fid15))
+    r15_prev_data = r15_prev.data
+    check("Scenario 15: PDF preview returns 200 without burning", r15_prev.status_code == 200 and r15_prev_data == b"pdf-binary-stream" and storage_mgr.file_exists(fid15))
 
     # Scenario 16: Unsupported file download
     print("\n== Scenario 16: Unsupported File Type Download ==")

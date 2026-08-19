@@ -159,7 +159,7 @@ async function uploadFileSmart(fileBlob, metadata, onProgress) {
 /** Fetch the encrypted blob with progress; returns { blob, headers }. */
 async function downloadBlob(fileId, { preview = false, onProgress, proof } = {}) {
   const params = new URLSearchParams();
-  if (preview) params.set('preview', 'true');
+  if (preview) params.set('preview', '1');
   const qs = params.toString();
   const headers = { Accept: 'application/octet-stream' };
   if (proof) headers['X-Access-Proof'] = proof;

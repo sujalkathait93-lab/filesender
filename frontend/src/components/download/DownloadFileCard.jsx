@@ -45,10 +45,10 @@ export function DownloadFileCard({
         <div className="meta-item">
           <label>Downloads</label>
           <span>
-            {fileInfo.max_downloads === 0
-              ? 'Unlimited'
-              : fileInfo.max_downloads === 1
+            {fileInfo.burn_on_read
               ? '1 (Burn on read)'
+              : fileInfo.max_downloads === 0
+              ? 'Unlimited'
               : `${fileInfo.download_count} of ${fileInfo.max_downloads} used`}
           </span>
         </div>

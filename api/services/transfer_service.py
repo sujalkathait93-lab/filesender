@@ -318,8 +318,10 @@ class TransferService:
                     raise GoneError("Transfer has expired")
                 raise NotFoundError("Transfer not found or expired")
 
-            if (row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]) or row["status"] == "burned":
-                raise GoneError("File has been burned/deleted after reading")
+            if row["status"] == "burned" or (bool(row["burn_on_read"]) and row["download_count"] >= 1):
+                raise GoneError("File has self-destructed (Burn-on-Read active)")
+            if row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
+                raise GoneError("Download limit reached for this transfer")
 
             self._require_access_proof(row, proof)
 
@@ -384,7 +386,9 @@ class TransferService:
                     WHERE id = ? AND download_count < max_downloads
                 """, (file_id,))
                 if updated.rowcount == 0:
-                    raise GoneError("File has self-destructed (Burn-on-Read active)")
+                    if bool(row["burn_on_read"]):
+                        raise GoneError("File has self-destructed (Burn-on-Read active)")
+                    raise GoneError("Download limit reached for this transfer")
                 conn.commit()
                 new_count = row["download_count"] + 1
             else:

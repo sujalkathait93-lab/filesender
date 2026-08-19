@@ -257,7 +257,7 @@ def download_file(file_id):
     _rate_limiter.check("download", _client_ip())
     file_id = validate_file_id(file_id)
     proof = _request_access_proof()
-    is_preview = request.args.get("preview") == "1"
+    is_preview = (request.args.get("preview") or "").strip().lower() in ("1", "true", "yes")
 
     row, file_path, is_burn = _transfer_service.download_file(file_id, preview=is_preview, proof=proof)
 

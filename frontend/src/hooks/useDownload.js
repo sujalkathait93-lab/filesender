@@ -30,7 +30,9 @@ function mapDownloadError(err, fallback) {
   if (status === 410 || msg.includes('expired') || msg.includes('gone') || msg.includes('deleted')) {
     if (msg.includes('preview')) return 'In-browser preview limit reached for this transfer. Click Save & Download directly.';
     if (msg.includes('expired')) return 'This transfer code has expired (time limit reached) and was securely purged from the server.';
-    return 'This file had Burn-on-Read active and was permanently self-destructed upon first download.';
+    if (msg.includes('limit') || msg.includes('maximum') || msg.includes('reached')) return 'Download limit reached for this transfer.';
+    if (msg.includes('burn')) return 'This file had Burn-on-Read active and was permanently self-destructed upon first download.';
+    return 'This transfer is no longer available (it has either expired, self-destructed, or reached its download limit).';
   }
   if (status === 403) return 'Access proof error: Please ensure you pasted the full transfer code (FS-id-key) rather than just the file ID.';
   if (status === 404) return 'Transfer not found: The code does not exist or was deleted by the sender.';
@@ -74,7 +76,7 @@ export function useDownload(stateMachine) {
       stateMachine?.transitionTo(TransferState.DOWNLOAD);
     } catch (err) {
       const mapped = mapDownloadError(err, err.message || 'Could not reach server. Please check your network connection.');
-      if (err.status === 410 && !(err.message || '').toLowerCase().includes('expired')) {
+      if (err.status === 410 && (err.message || '').toLowerCase().includes('burn')) {
         setIsBurned(true);
       }
       setError(mapped);
