@@ -14,11 +14,10 @@ import { DownloadFileCard } from '../components/download/DownloadFileCard';
 import { DecryptedFilesList } from '../components/download/DecryptedFilesList';
 import { FilePreviewModal } from '../components/download/FilePreviewModal';
 import { ExpiredFileCard } from '../components/download/ExpiredFileCard';
-import { QRScannerModal } from '../components/download/QRScannerModal';
 
 /**
  * Download Page Orchestrator Component
- * Primary Responsibility: Manage state for download workflows, orchestrating code search, QR scanning, decrypting, previewing, and saving.
+ * Primary Responsibility: Manage state for download workflows, orchestrating 10-digit code search, decrypting, previewing, and saving.
  */
 function DownloadPage() {
   const { fileId: urlFileId } = useParams();
@@ -27,9 +26,6 @@ function DownloadPage() {
   const [currentState, setCurrentState] = useState(TransferState.IDLE);
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [codeInput, setCodeInput] = useState(urlFileId || '');
-
-  // QR Scanner Modal State
-  const [showQRScanner, setShowQRScanner] = useState(false);
 
   // Search guards
   const searchInFlightRef = useRef(false);
@@ -121,10 +117,12 @@ function DownloadPage() {
 
   const handleSearchCode = (targetCode, targetKey = null) => {
     if (searchInFlightRef.current || isLoading) return;
-    const target = targetCode || codeInput;
-    if (!target.trim()) return;
+    const target = (targetCode || codeInput || '').trim();
+    if (!target) return;
+    const parsed = parseTransferCode(target);
+    const keyToUse = targetKey || parsed.key;
     searchInFlightRef.current = true;
-    searchCode(target, targetKey).finally(() => {
+    searchCode(target, keyToUse).finally(() => {
       searchInFlightRef.current = false;
     });
   };
@@ -134,19 +132,14 @@ function DownloadPage() {
       const text = await navigator.clipboard.readText();
       if (text && text.trim()) {
         const val = text.trim();
-        setCodeInput(val);
         const parsed = parseTransferCode(val);
+        const codeDisplay = parsed.valid && parsed.fileId && parsed.key
+          ? `FS-${parsed.fileId.toUpperCase()}-${parsed.key.toUpperCase()}`
+          : val;
+        setCodeInput(codeDisplay);
         handleSearchCode(val, parsed.key);
       }
     } catch (_) {}
-  };
-
-  const handleQRDetected = (scannedCode) => {
-    if (!scannedCode || !scannedCode.trim()) return;
-    const cleaned = scannedCode.trim();
-    setCodeInput(cleaned);
-    const parsed = parseTransferCode(cleaned);
-    handleSearchCode(cleaned, parsed.key);
   };
 
   const handleNewSearch = () => {
@@ -194,7 +187,7 @@ function DownloadPage() {
 
       <div className="page-header">
         <h2><Download size={22} /> Receive Files</h2>
-        <p>Enter your transfer code or scan a QR code below to connect, preview, and download encrypted files.</p>
+        <p>Enter your 10-digit transfer code below to connect, inspect file details, preview, and download.</p>
       </div>
 
       <CodeSearchInput
@@ -202,7 +195,6 @@ function DownloadPage() {
         onChangeCodeInput={setCodeInput}
         onSearchCode={handleSearchCode}
         onPasteClipboard={handlePasteClipboard}
-        onOpenQRScanner={() => setShowQRScanner(true)}
         isLoading={isLoading}
         isDecrypting={isDecrypting}
       />
@@ -232,7 +224,7 @@ function DownloadPage() {
         <EmptyState
           icon={Search}
           title="No active transfer selected"
-          description="Enter a transfer code or scan a QR code from the sender to connect, inspect file details, preview, and download."
+          description="Enter a 10-digit transfer code from the sender to connect, inspect file details, preview, and download."
           actionText="Paste from Clipboard"
           onAction={handlePasteClipboard}
         />
@@ -269,13 +261,6 @@ function DownloadPage() {
           onNewSearch={handleNewSearch}
         />
       )}
-
-      {/* QR Scanner Camera Modal */}
-      <QRScannerModal
-        isOpen={showQRScanner}
-        onClose={() => setShowQRScanner(false)}
-        onCodeDetected={handleQRDetected}
-      />
 
       {/* File Preview Modal */}
       <FilePreviewModal

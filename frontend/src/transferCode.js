@@ -47,6 +47,12 @@ export function parseTransferCode(input) {
     valid
   });
 
+  // If user pasted a full message or text with Code: FS-..., extract the code
+  const codeInText = str.match(/(?:Code:\s*|code=)?(FS-[0-9a-zA-Z]+-[0-9a-zA-Z]+)/i);
+  if (codeInText && codeInText[1]) {
+    str = codeInText[1];
+  }
+
   // Extract from full URL if pasted
   if (str.startsWith('http://') || str.startsWith('https://')) {
     try {

@@ -1,28 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import {
-  CheckCircle2, Copy, RefreshCw, Trash2, Plus, QrCode,
-  Flame, Key, Clock, ShieldCheck, Share2, Eye, Radio,
-  Users, FileText, AlertTriangle, Shield, Check, Sparkles
+  CheckCircle2, Copy, Trash2, Plus, Flame, Key, Clock,
+  ShieldCheck, Share2, Eye, Radio, Users, FileText, Check
 } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 import { copyToClipboard } from '../../utils/clipboard';
 import { createShareMessage } from '../../crypto';
 import { FileCategoryIcon } from '../common/FileCategoryIcon';
 
-const MAX_REFRESHES = 5;
-
 /**
  * ShareResultCard Component
  * Primary Responsibility: Active Sender Dashboard Card rendered after successful upload.
- * Displays EXACTLY 7 ORGANIZED BOXES:
+ * Displays clean, organized telemetry boxes focused on the 10-Digit Transfer Code:
  * 1. File Preview
- * 2. Transfer Code
- * 3. QR Code
- * 4. Expiry Time
- * 5. Download Count
- * 6. Active Users
- * 7. Transfer Status
+ * 2. 10-Digit Transfer Code (Copy, WhatsApp, Share Text)
+ * 3. Expiry Countdown
+ * 4. Download Count & Limits
+ * 5. Active Users & Receivers
+ * 6. Transfer Status & Cryptography
  */
 export function ShareResultCard({
   result,
@@ -32,10 +27,6 @@ export function ShareResultCard({
   onNewUpload,
   onCancel,
   isCancelling,
-  onRefreshQRToken,
-  isRefreshingToken,
-  refreshCount = 0,
-  refreshLimitReached = false,
   onPreviewFile,
   p2pState = 'idle'
 }) {
@@ -106,7 +97,7 @@ export function ShareResultCard({
         <div className="result-header-text">
           <h3 className="result-title">Encrypted &amp; Ready to Share!</h3>
           <p className="result-subtitle">
-            Your file is encrypted in your browser with zero server keys. Share the 10-digit code or QR code below.
+            Your file was encrypted in your browser with zero server keys. Share the 10-digit code below to transfer.
           </p>
         </div>
       </div>
@@ -124,7 +115,7 @@ export function ShareResultCard({
         </div>
       )}
 
-      {/* ── EXACTLY 7 ORGANIZED SENDER BOXES ── */}
+      {/* ── ORGANIZED SENDER TELEMETRY BOXES ── */}
       <div className="sender-dashboard-grid-7">
         {/* BOX 1: FILE PREVIEW */}
         <div className="dashboard-box box-file-preview">
@@ -162,7 +153,7 @@ export function ShareResultCard({
           )}
         </div>
 
-        {/* BOX 2: TRANSFER CODE */}
+        {/* BOX 2: 10-DIGIT TRANSFER CODE */}
         <div className="dashboard-box box-transfer-code">
           <div className="dashboard-box-header">
             <div className="box-header-title">
@@ -174,78 +165,52 @@ export function ShareResultCard({
           <div className="dashboard-code-display">
             <span className="dashboard-code-text">{result.transferCode}</span>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-md box-copy-btn"
-            onClick={onCopy}
-            title="Copy 10-digit code to clipboard"
-          >
-            {copied ? (
-              <>
-                <CheckCircle2 size={16} /> Copied!
-              </>
-            ) : (
-              <>
-                <Copy size={16} /> Copy Code
-              </>
-            )}
-          </button>
+          <div className="dashboard-code-actions-row" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-md box-copy-btn"
+              onClick={onCopy}
+              style={{ flex: 1 }}
+              title="Copy 10-digit code to clipboard"
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 size={16} /> Copied!
+                </>
+              ) : (
+                <>
+                  <Copy size={16} /> Copy Code
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-md"
+              onClick={handleWhatsAppShare}
+              title="Share transfer code directly on WhatsApp"
+            >
+              <Share2 size={15} /> WhatsApp
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-md"
+              onClick={handleShareMessage}
+              title="Copy formatted message with transfer instructions"
+            >
+              <Copy size={15} /> {copiedShareMsg ? 'Copied' : 'Share Text'}
+            </button>
+          </div>
           <span className="dashboard-box-hint">
-            Give this 10-digit code to recipient to unlock file.
+            Give this 10-digit code to recipient to unlock and receive the file.
           </span>
         </div>
 
-        {/* BOX 3: QR CODE */}
-        <div className="dashboard-box box-qr-code">
-          <div className="dashboard-box-header">
-            <div className="box-header-title">
-              <QrCode size={16} className="box-header-icon" />
-              <span>3. QR Code</span>
-            </div>
-            <span className="badge badge-primary">
-              Token {refreshCount}/{MAX_REFRESHES}
-            </span>
-          </div>
-          <div className="dashboard-qr-wrapper">
-            <QRCodeSVG value={shareUrl || ''} size={135} level="M" includeMargin={false} />
-          </div>
-          <div className="dashboard-qr-actions">
-            {!refreshLimitReached && (
-              <button
-                type="button"
-                onClick={onRefreshQRToken}
-                disabled={isRefreshingToken}
-                className="btn btn-secondary btn-sm"
-                title="Rotate access token for security"
-              >
-                <RefreshCw size={12} className={isRefreshingToken ? 'spin' : ''} /> Rotate
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleWhatsAppShare}
-              title="Share via WhatsApp"
-            >
-              <Share2 size={12} /> WhatsApp
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleShareMessage}
-              title="Copy formatted share message"
-            >
-              <Copy size={12} /> {copiedShareMsg ? 'Copied' : 'Share Text'}
-            </button>
-          </div>
-        </div>
-
-        {/* BOX 4: EXPIRY TIME */}
+        {/* BOX 3: EXPIRY TIME */}
         <div className="dashboard-box box-expiry-time">
           <div className="dashboard-box-header">
             <div className="box-header-title">
               <Clock size={16} className="box-header-icon" />
-              <span>4. Expiry Time</span>
+              <span>3. Expiry Countdown</span>
             </div>
             <span className={`badge ${totalSeconds < 15 ? 'badge-amber' : 'badge-primary'}`}>
               {isExpired ? 'Expired' : `${totalSeconds}s Left`}
@@ -266,19 +231,19 @@ export function ShareResultCard({
             <div
               className="dashboard-progress-fill"
               style={{
-                width: `${Math.max(0, Math.min(100, (totalSeconds / 60) * 100))}%`,
+                width: `${Math.max(0, Math.min(100, (totalSeconds / 180) * 100))}%`,
                 backgroundColor: totalSeconds < 15 ? 'var(--warning-fg)' : 'var(--accent)'
               }}
             />
           </div>
         </div>
 
-        {/* BOX 5: DOWNLOAD COUNT & REMAINING LIMITS */}
+        {/* BOX 4: DOWNLOAD COUNT & REMAINING LIMITS */}
         <div className="dashboard-box box-download-count">
           <div className="dashboard-box-header">
             <div className="box-header-title">
               <Users size={16} className="box-header-icon" />
-              <span>5. Download Count</span>
+              <span>4. Download Count</span>
             </div>
             <span className={`badge ${isBurn ? 'badge-amber' : 'badge-emerald'}`}>
               {isBurn ? 'Burn After Read' : maxDownloads === 0 ? 'Unlimited' : `${remainingDownloads} Left`}
@@ -313,12 +278,12 @@ export function ShareResultCard({
           )}
         </div>
 
-        {/* BOX 6: ACTIVE USERS & RECEIVERS */}
+        {/* BOX 5: ACTIVE USERS & RECEIVERS */}
         <div className="dashboard-box box-active-users">
           <div className="dashboard-box-header">
             <div className="box-header-title">
               <Radio size={16} className="box-header-icon" />
-              <span>6. Active Users</span>
+              <span>5. Active Users</span>
             </div>
             <span className="badge badge-slate">Live Channel</span>
           </div>
@@ -338,12 +303,12 @@ export function ShareResultCard({
           </div>
         </div>
 
-        {/* BOX 7: TRANSFER STATUS & SECURITY */}
+        {/* BOX 6: TRANSFER STATUS & SECURITY */}
         <div className="dashboard-box box-transfer-status">
           <div className="dashboard-box-header">
             <div className="box-header-title">
               <ShieldCheck size={16} className="box-header-icon" />
-              <span>7. Transfer Status</span>
+              <span>6. Transfer Status</span>
             </div>
             <span className="badge badge-emerald">Protected</span>
           </div>

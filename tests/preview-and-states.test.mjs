@@ -169,6 +169,9 @@ async function runTests() {
   check('share message contains transfer code', shareMsg.includes('Code: FS-4BE81-9F8A7'));
   check('share message contains link and expiry in seconds', shareMsg.includes('Link:') && shareMsg.includes('Expires: 60 seconds'));
 
+  const pMsg = parseTransferCode('FileShare Transfer\nCode: FS-4BE81-9F8A7\nExpires: 60 seconds');
+  check('parse code from multi-line pasted message', pMsg.fileId === '4be81' && pMsg.key === '9f8a7');
+
   console.log(`\n== ${passed} passed, ${failed} failed ==`);
   process.exit(failed ? 1 : 0);
 }

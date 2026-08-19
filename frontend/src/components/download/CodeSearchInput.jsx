@@ -1,16 +1,15 @@
 import React from 'react';
-import { Copy, Key, Loader2, QrCode } from 'lucide-react';
+import { Copy, Key, Loader2 } from 'lucide-react';
 
 /**
  * CodeSearchInput Component
- * Primary Responsibility: Handle user input for 10-digit transfer codes, clipboard paste, camera QR scan trigger, and connect submit.
+ * Primary Responsibility: Handle user input for 10-digit transfer codes, clipboard paste, and connect submit.
  */
 export function CodeSearchInput({
   codeInput,
   onChangeCodeInput,
   onSearchCode,
   onPasteClipboard,
-  onOpenQRScanner,
   isLoading,
   isDecrypting
 }) {
@@ -20,7 +19,7 @@ export function CodeSearchInput({
         type="text"
         placeholder="Enter 10-Digit Transfer Code (e.g. FS-48A19-9F7C2 or 48A19-9F7C2)"
         value={codeInput}
-        onChange={(e) => onChangeCodeInput(e.target.value.replace(/[^a-zA-Z0-9\-:_/?.#=&]/g, ''))}
+        onChange={(e) => onChangeCodeInput(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onSearchCode()}
         inputMode="text"
         autoCapitalize="characters"
@@ -29,23 +28,11 @@ export function CodeSearchInput({
         spellCheck="false"
         data-lpignore="true"
         data-form-type="other"
-        maxLength={128}
+        maxLength={256}
         disabled={isLoading || isDecrypting}
         aria-label="Enter 10-Digit Transfer Code or URL"
       />
       <div className="download-input-actions">
-        {onOpenQRScanner && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={onOpenQRScanner}
-            title="Scan QR code with camera"
-            disabled={isLoading || isDecrypting}
-            aria-label="Scan QR code"
-          >
-            <QrCode size={14} /> Scan QR
-          </button>
-        )}
         <button
           type="button"
           className="btn btn-secondary btn-sm"
