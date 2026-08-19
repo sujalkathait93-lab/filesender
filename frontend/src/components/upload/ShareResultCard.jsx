@@ -2,18 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   CheckCircle2, Copy, RefreshCw, Trash2, Plus, QrCode,
-  Flame, Key, Clock, ShieldCheck, Share2, AlertTriangle, ArrowRight, ExternalLink
+  Flame, Key, Clock, ShieldCheck, Share2, Eye, Radio,
+  Users, FileText, AlertTriangle, Shield, Check, Sparkles
 } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 import { copyToClipboard } from '../../utils/clipboard';
 import { createShareMessage } from '../../crypto';
+import { FileCategoryIcon } from '../common/FileCategoryIcon';
 
 const MAX_REFRESHES = 5;
 
 /**
  * ShareResultCard Component
  * Primary Responsibility: Active Sender Dashboard Card rendered after successful upload.
- * Displays 10-digit Transfer Code, QR Code, live expiry countdown, download telemetry, and sender actions.
+ * Displays EXACTLY 7 ORGANIZED BOXES:
+ * 1. File Preview
+ * 2. Transfer Code
+ * 3. QR Code
+ * 4. Expiry Time
+ * 5. Download Count
+ * 6. Active Users
+ * 7. Transfer Status
  */
 export function ShareResultCard({
   result,
@@ -25,8 +34,10 @@ export function ShareResultCard({
   isCancelling,
   onRefreshQRToken,
   isRefreshingToken,
-  refreshCount,
-  refreshLimitReached
+  refreshCount = 0,
+  refreshLimitReached = false,
+  onPreviewFile,
+  p2pState = 'idle'
 }) {
   const [now, setNow] = useState(Date.now());
   const [copiedShareMsg, setCopiedShareMsg] = useState(false);
@@ -46,23 +57,23 @@ export function ShareResultCard({
   const seconds = totalSeconds % 60;
   const isExpired = remainingMillis <= 0;
 
+  const downloadsUsed = result.downloadCount || 0;
+  const maxDownloads = result.maxDownloads;
   const remainingDownloads = result.downloadsRemaining !== undefined
     ? result.downloadsRemaining
-    : result.maxDownloads > 0
-    ? Math.max(0, result.maxDownloads - (result.downloadCount || 0))
+    : maxDownloads > 0
+    ? Math.max(0, maxDownloads - downloadsUsed)
     : null;
 
-  const getDownloadLimitText = () => {
-    if (isBurn) return '1 download (Burn After Read)';
-    if (result.maxDownloads === 0) return 'Unlimited downloads until expiry';
-    return `${result.downloadCount || 0} of ${result.maxDownloads} downloads used (${remainingDownloads} remaining)`;
-  };
+  const downloadProgressPercent = maxDownloads > 0
+    ? Math.min(100, Math.round((downloadsUsed / maxDownloads) * 100))
+    : 0;
 
   const handleShareMessage = async () => {
     const msg = createShareMessage({
       transferCode: result.transferCode,
       shareUrl,
-      expiryHours: 1,
+      expiryHours: 60,
       fileCount: result.fileCount || 1,
       totalSize: formatBytes(result.originalSize)
     });
@@ -77,7 +88,7 @@ export function ShareResultCard({
     const msg = createShareMessage({
       transferCode: result.transferCode,
       shareUrl,
-      expiryHours: 1,
+      expiryHours: 60,
       fileCount: result.fileCount || 1,
       totalSize: formatBytes(result.originalSize)
     });
@@ -86,8 +97,8 @@ export function ShareResultCard({
   };
 
   return (
-    <div className="upload-result animate-in" role="region" aria-label="Active Transfer Hub">
-      {/* Success Confirmation Header */}
+    <div className="upload-result sender-dashboard animate-in" role="region" aria-label="Sender Transfer Dashboard">
+      {/* Success Banner */}
       <div className="result-header-banner">
         <div className="result-success-icon-wrap">
           <CheckCircle2 size={28} className="result-success-icon" />
@@ -95,7 +106,7 @@ export function ShareResultCard({
         <div className="result-header-text">
           <h3 className="result-title">Encrypted &amp; Ready to Share!</h3>
           <p className="result-subtitle">
-            Your file was encrypted in your browser and is securely staged for transfer.
+            Your file is encrypted in your browser with zero server keys. Share the 10-digit code or QR code below.
           </p>
         </div>
       </div>
@@ -107,53 +118,65 @@ export function ShareResultCard({
           <div>
             <strong className="burn-title">Burn After Read Active</strong>
             <span className="burn-copy">
-              Permanently deleted from server disk immediately after 1 successful download.
+              Permanently self-destructs and unlinks from server disk immediately after 1 successful download.
             </span>
           </div>
         </div>
       )}
 
-      {/* Transfer Metrics Telemetry Grid */}
-      <div className="transfer-telemetry-grid">
-        <div className="telemetry-card">
-          <span className="telemetry-label">Status</span>
-          <span className="telemetry-val text-success">
-            {isExpired ? 'Expired' : 'Active & Ready'}
-          </span>
+      {/* ── EXACTLY 7 ORGANIZED SENDER BOXES ── */}
+      <div className="sender-dashboard-grid-7">
+        {/* BOX 1: FILE PREVIEW */}
+        <div className="dashboard-box box-file-preview">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <FileText size={16} className="box-header-icon" />
+              <span>1. File Preview</span>
+            </div>
+            <span className="badge badge-slate">
+              {result.fileCount > 1 ? `${result.fileCount} Files Bundle` : 'Single File'}
+            </span>
+          </div>
+          <div className="box-preview-content">
+            <div className="preview-thumb-wrap">
+              <FileCategoryIcon fileName={result.originalName} size={28} />
+            </div>
+            <div className="preview-info-text">
+              <strong className="preview-filename" title={result.originalName}>
+                {result.originalName}
+              </strong>
+              <span className="preview-filesize">
+                {formatBytes(result.originalSize)} • AES-256 Encrypted
+              </span>
+            </div>
+          </div>
+          {onPreviewFile && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm box-preview-btn"
+              onClick={onPreviewFile}
+              title="Inspect file contents in browser"
+            >
+              <Eye size={13} /> View File Preview
+            </button>
+          )}
         </div>
-        <div className="telemetry-card">
-          <span className="telemetry-label">Live Expiry Countdown</span>
-          <span className={`telemetry-val ${totalSeconds < 300 ? 'text-warning' : 'text-primary'}`}>
-            <Clock size={14} /> {isExpired ? 'Expired' : `${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`}
-          </span>
-        </div>
-        <div className="telemetry-card">
-          <span className="telemetry-label">Download Policy</span>
-          <span className="telemetry-val">
-            {getDownloadLimitText()}
-          </span>
-        </div>
-        <div className="telemetry-card">
-          <span className="telemetry-label">Files &amp; Payload</span>
-          <span className="telemetry-val">
-            {result.fileCount || 1} file(s) ({formatBytes(result.originalSize)})
-          </span>
-        </div>
-      </div>
 
-      {/* 10-Digit Transfer Code Card */}
-      <div className="crypto-code-box">
-        <div className="crypto-code-header">
-          <label className="crypto-code-label--success">
-            <Key size={16} /> 10-Digit Transfer Code
-          </label>
-          <span className="code-hint-badge">Share this code with receiver</span>
-        </div>
-        <div className="crypto-code-display-row">
-          <div className="crypto-code-text">{result.transferCode}</div>
+        {/* BOX 2: TRANSFER CODE */}
+        <div className="dashboard-box box-transfer-code">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <Key size={16} className="box-header-icon" />
+              <span>2. Transfer Code</span>
+            </div>
+            <span className="badge badge-emerald">10 Digits</span>
+          </div>
+          <div className="dashboard-code-display">
+            <span className="dashboard-code-text">{result.transferCode}</span>
+          </div>
           <button
             type="button"
-            className="btn btn-primary btn-md copy-code-btn"
+            className="btn btn-primary btn-md box-copy-btn"
             onClick={onCopy}
             title="Copy 10-digit code to clipboard"
           >
@@ -167,27 +190,26 @@ export function ShareResultCard({
               </>
             )}
           </button>
+          <span className="dashboard-box-hint">
+            Give this 10-digit code to recipient to unlock file.
+          </span>
         </div>
-      </div>
 
-      {/* QR Code Card */}
-      {shareUrl && (
-        <div className="qr-code-box animate-in">
-          <div className="qr-heading">
-            <div className="qr-heading-left">
-              <QrCode size={18} />
-              <strong className="qr-heading-title">Scan QR Code to Download</strong>
+        {/* BOX 3: QR CODE */}
+        <div className="dashboard-box box-qr-code">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <QrCode size={16} className="box-header-icon" />
+              <span>3. QR Code</span>
             </div>
             <span className="badge badge-primary">
-              QR Tokens: {refreshCount}/{MAX_REFRESHES}
+              Token {refreshCount}/{MAX_REFRESHES}
             </span>
           </div>
-
-          <div className="qr-code-wrapper">
-            <QRCodeSVG value={shareUrl} size={170} level="M" includeMargin={false} />
+          <div className="dashboard-qr-wrapper">
+            <QRCodeSVG value={shareUrl || ''} size={135} level="M" includeMargin={false} />
           </div>
-
-          <div className="qr-actions-row">
+          <div className="dashboard-qr-actions">
             {!refreshLimitReached && (
               <button
                 type="button"
@@ -196,38 +218,163 @@ export function ShareResultCard({
                 className="btn btn-secondary btn-sm"
                 title="Rotate access token for security"
               >
-                <RefreshCw size={14} className={isRefreshingToken ? 'spin' : ''} />
-                Rotate QR Token
+                <RefreshCw size={12} className={isRefreshingToken ? 'spin' : ''} /> Rotate
               </button>
             )}
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={handleWhatsAppShare}
-              title="Share transfer link directly on WhatsApp"
+              title="Share via WhatsApp"
             >
-              <Share2 size={14} /> WhatsApp Share
+              <Share2 size={12} /> WhatsApp
             </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={handleShareMessage}
-              title="Copy formatted transfer message with link"
+              title="Copy formatted share message"
             >
-              <Copy size={14} /> {copiedShareMsg ? 'Message Copied!' : 'Copy Share Message'}
+              <Copy size={12} /> {copiedShareMsg ? 'Copied' : 'Share Text'}
             </button>
           </div>
         </div>
-      )}
 
-      {/* Danger Zone: Sender Instant Cancel / Delete */}
+        {/* BOX 4: EXPIRY TIME */}
+        <div className="dashboard-box box-expiry-time">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <Clock size={16} className="box-header-icon" />
+              <span>4. Expiry Time</span>
+            </div>
+            <span className={`badge ${totalSeconds < 15 ? 'badge-amber' : 'badge-primary'}`}>
+              {isExpired ? 'Expired' : `${totalSeconds}s Left`}
+            </span>
+          </div>
+          <div className="dashboard-metric-hero">
+            <Clock size={20} className={totalSeconds < 15 ? 'text-warning' : 'text-primary'} />
+            <span className={`hero-val ${totalSeconds < 15 ? 'text-warning' : ''}`}>
+              {isExpired ? '00:00' : `${minutes > 0 ? `${minutes}m ` : ''}${seconds < 10 ? '0' : ''}${seconds}s`}
+            </span>
+          </div>
+          <p className="dashboard-metric-subtext">
+            {isExpired
+              ? 'File expired & automatically erased from server.'
+              : `Auto-destructs strictly when countdown reaches zero.`}
+          </p>
+          <div className="dashboard-progress-track">
+            <div
+              className="dashboard-progress-fill"
+              style={{
+                width: `${Math.max(0, Math.min(100, (totalSeconds / 60) * 100))}%`,
+                backgroundColor: totalSeconds < 15 ? 'var(--warning-fg)' : 'var(--accent)'
+              }}
+            />
+          </div>
+        </div>
+
+        {/* BOX 5: DOWNLOAD COUNT & REMAINING LIMITS */}
+        <div className="dashboard-box box-download-count">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <Users size={16} className="box-header-icon" />
+              <span>5. Download Count</span>
+            </div>
+            <span className={`badge ${isBurn ? 'badge-amber' : 'badge-emerald'}`}>
+              {isBurn ? 'Burn After Read' : maxDownloads === 0 ? 'Unlimited' : `${remainingDownloads} Left`}
+            </span>
+          </div>
+          <div className="dashboard-metric-hero">
+            {isBurn ? (
+              <span className="hero-val text-warning">{downloadsUsed} / 1 used</span>
+            ) : maxDownloads === 0 ? (
+              <span className="hero-val text-success">{downloadsUsed} downloads</span>
+            ) : (
+              <span className="hero-val">{downloadsUsed} / {maxDownloads} used</span>
+            )}
+          </div>
+          <p className="dashboard-metric-subtext">
+            {isBurn
+              ? 'Allowed: Exactly 1 download. Self-destructs on completion.'
+              : maxDownloads === 0
+              ? 'Allowed: Unlimited downloads until countdown timer expires.'
+              : `Allowed: ${maxDownloads} max downloads (${remainingDownloads} downloads remaining).`}
+          </p>
+          {maxDownloads > 0 && (
+            <div className="dashboard-progress-track">
+              <div
+                className="dashboard-progress-fill"
+                style={{
+                  width: `${downloadProgressPercent}%`,
+                  backgroundColor: isBurn ? 'var(--warning-fg)' : 'var(--success-fg)'
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* BOX 6: ACTIVE USERS & RECEIVERS */}
+        <div className="dashboard-box box-active-users">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <Radio size={16} className="box-header-icon" />
+              <span>6. Active Users</span>
+            </div>
+            <span className="badge badge-slate">Live Channel</span>
+          </div>
+          <div className="dashboard-metric-hero">
+            <span className="pulse-dot" />
+            <span className="hero-val hero-val--subtle">
+              {p2pState === 'connected' ? '1 Connected Peer' : 'Waiting for Recipient'}
+            </span>
+          </div>
+          <p className="dashboard-metric-subtext">
+            {p2pState === 'connected'
+              ? 'Direct peer streaming active. Zero intermediate storage.'
+              : 'Signaling listener active. Receiver will connect when code is entered.'}
+          </p>
+          <div className="active-user-pill">
+            <span>STUN / WebRTC Signaling: Ready</span>
+          </div>
+        </div>
+
+        {/* BOX 7: TRANSFER STATUS & SECURITY */}
+        <div className="dashboard-box box-transfer-status">
+          <div className="dashboard-box-header">
+            <div className="box-header-title">
+              <ShieldCheck size={16} className="box-header-icon" />
+              <span>7. Transfer Status</span>
+            </div>
+            <span className="badge badge-emerald">Protected</span>
+          </div>
+          <div className="dashboard-status-list">
+            <div className="status-item-row">
+              <Check size={14} className="text-success" />
+              <span>AES-256-GCM Zero-Knowledge</span>
+            </div>
+            <div className="status-item-row">
+              <Check size={14} className="text-success" />
+              <span>Keys never leave your device</span>
+            </div>
+            <div className="status-item-row">
+              <Check size={14} className="text-success" />
+              <span>Auto-purged on expiry/burn</span>
+            </div>
+          </div>
+          <span className="dashboard-box-hint">
+            State: {isExpired ? 'Expired' : 'Active & Ready for Download'}
+          </span>
+        </div>
+      </div>
+
+      {/* Sender Actions Footer */}
       <div className="result-actions-footer">
         <button
           type="button"
           onClick={onCancel}
           disabled={isCancelling}
           className="btn btn-danger btn-md"
-          title="Permanently remove file from server now"
+          title="Permanently remove file from server immediately"
         >
           <Trash2 size={16} />
           {isCancelling ? 'Deleting...' : 'Cancel & Purge File Now'}
@@ -245,3 +392,5 @@ export function ShareResultCard({
     </div>
   );
 }
+
+export default ShareResultCard;

@@ -440,6 +440,8 @@ function UploadPage() {
           isRefreshingToken={isRefreshingToken}
           refreshCount={refreshCount}
           refreshLimitReached={refreshLimitReached}
+          onPreviewFile={files.length > 0 ? () => handleOpenLocalPreview(files[0]) : null}
+          p2pState={p2pState}
         />
       )}
 
