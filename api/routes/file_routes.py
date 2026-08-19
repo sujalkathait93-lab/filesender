@@ -262,13 +262,16 @@ def download_file(file_id):
     row, file_path, is_burn = _transfer_service.download_file(file_id, preview=is_preview, proof=proof)
 
     def generate_stream():
+        bytes_sent = 0
+        expected_size = row["encrypted_size"]
         try:
             with open(file_path, "rb") as f:
                 while chunk := f.read(65536):
+                    bytes_sent += len(chunk)
                     yield chunk
         finally:
-            if is_burn:
-                _transfer_service.purge_file(file_id)
+            if not is_preview and bytes_sent >= expected_size:
+                _transfer_service.record_successful_download(file_id)
 
     response = Response(generate_stream(), mimetype="application/octet-stream")
     clean_name = row["filename"].replace('"', '\\"').replace('\r', '').replace('\n', '')
@@ -277,7 +280,7 @@ def download_file(file_id):
     response.headers["Content-Length"] = str(row["encrypted_size"])
     response.headers["X-File-ID"] = row["id"]
     response.headers["X-Original-Name"] = urllib.parse.quote(row["original_name"], safe='')
-    response.headers["X-Burn-On-Read"] = str(row["burn_on_read"])
+    response.headers["X-Burn-On-Read"] = "1" if (bool(row["burn_on_read"]) and is_burn) else "0"
     response.headers["X-IV"] = row["iv"]
     response.headers["X-Salt"] = row["salt"]
     response.headers["X-Compressed"] = str(row["compressed"])

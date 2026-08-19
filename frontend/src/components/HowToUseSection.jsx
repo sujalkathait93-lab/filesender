@@ -1,16 +1,18 @@
-import React, { useState, useCallback, memo } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useCallback, memo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Upload, Download, ArrowRight, Sparkles, CheckCircle2,
-  Check, ChevronDown, ChevronUp, Radio, Image as ImageIcon
-} from 'lucide-react'
+  Check, ChevronDown, ChevronUp, Radio, Image as ImageIcon,
+  Flame, ShieldCheck, Database, HardDrive, Clock, Eye, Info, Lock
+} from 'lucide-react';
 import {
-  TRANSFER_MODES,
-  FEATURES_LIST,
+  FILE_SHARING_LIFECYCLE_STEPS,
+  FEATURE_EXPLANATIONS,
   QUICK_PICK_CARDS,
   COMPARISON_ROWS,
-  FAQS
-} from '../data/guideData'
+  FAQS,
+  DATA_STORAGE_POLICY
+} from '../data/guideData';
 
 /**
  * Quick Decision Picker subcomponent (SRP: Quick recommendation presentation)
@@ -51,143 +53,192 @@ const QuickPickSection = memo(function QuickPickSection() {
 });
 
 /**
- * Mode Tabs Selector (SRP: Mode navigation buttons)
+ * 9-Step File Sharing Complete Process Walkthrough
  */
-const ModeTabsNav = memo(function ModeTabsNav({ activeTab, onSelectMode }) {
+const FileSharingLifecycleSection = memo(function FileSharingLifecycleSection() {
   return (
-    <div className="guide-tabs-container" role="tablist" aria-label="Transfer Modes">
-      {TRANSFER_MODES.map((mode) => {
-        const Icon = mode.icon;
-        const isActive = activeTab === mode.id;
-        return (
-          <button
-            key={mode.id}
-            role="tab"
-            aria-selected={isActive}
-            className={`guide-tab-btn ${isActive ? 'active' : ''}`}
-            onClick={() => onSelectMode(mode.id)}
-          >
-            <div className="guide-tab-icon">
-              <Icon size={18} />
-            </div>
-            <div className="guide-tab-info">
-              <span className="guide-tab-title">{mode.title}</span>
-              <span className="guide-tab-subtitle">{mode.subtitle}</span>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-});
-
-/**
- * Mode Walkthrough Detail Card (SRP: Step-by-step instructions for active mode)
- */
-const ModeWalkthroughCard = memo(function ModeWalkthroughCard({ mode }) {
-  const Icon = mode.icon;
-  return (
-    <div className="guide-mode-card animate-in" key={mode.id}>
-      <div className="guide-mode-header">
-        <div className="guide-mode-title-group">
-          <div className="guide-mode-icon-circle">
-            <Icon size={24} />
-          </div>
-          <div>
-            <div className="guide-mode-badge-row">
-              <h3 className="guide-mode-title">{mode.title}</h3>
-              <span className={`badge ${mode.badgeColor}`}>{mode.badge}</span>
-            </div>
-            <p className="guide-mode-desc">{mode.simpleSummary}</p>
-            <div className="guide-best-for-bar">
-              <span className="best-for-label">BEST FOR:</span>
-              <span className="best-for-text">{mode.bestFor}</span>
-            </div>
-          </div>
-        </div>
-
-        <Link to={mode.actionLink} className="btn btn-primary guide-action-btn">
-          {mode.actionText} <ArrowRight size={16} />
-        </Link>
-      </div>
-
-      <div className="guide-steps-grid">
-        {mode.steps.map((step) => (
-          <div key={step.number} className="guide-step-card">
-            <div className="guide-step-header">
-              <div className="guide-step-badge">Step {step.number}</div>
-              <CheckCircle2 size={16} className="guide-step-check" />
-            </div>
-            <h4 className="guide-step-title">{step.title}</h4>
-            <p className="guide-step-desc">{step.desc}</p>
-            <div className="guide-step-tip">
-              <span className="guide-tip-label">TIP</span>
-              <span>{step.tip}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-});
-
-/**
- * Features Deep-Dive Grid (SRP: Technical capability highlights and format tags)
- */
-const FeaturesDeepGrid = memo(function FeaturesDeepGrid() {
-  return (
-    <section id="features" className="features-deep-section" aria-label="Main Features">
+    <section id="how-to-use" className="lifecycle-section" aria-label="9-Step File Sharing Process">
       <div className="section-header">
-        <span className="section-tag">MAIN FEATURES EXPLAINED</span>
-        <h2 className="section-title">Why FileShare Is Safer &amp; Faster</h2>
+        <span className="section-tag">COMPLETE PROCESS WALKTHROUGH</span>
+        <h2 className="section-title">How File Sharing Works (9 Simple Steps)</h2>
         <p className="section-subtitle">
-          Simple points explaining how each feature protects your privacy and speeds up transfers.
+          From file selection to instant decryption and permanent cleanup.
         </p>
       </div>
 
-      <div className="features-deep-grid">
-        {FEATURES_LIST.map((feat, idx) => {
-          const Icon = feat.icon;
-          return (
-            <div key={idx} className="feature-deep-card">
-              <div className="feature-deep-top">
-                <div className="feature-deep-icon">
-                  <Icon size={22} />
-                </div>
-                <span className="feature-category-badge">{feat.tag}</span>
-              </div>
-              <h3 className="feature-deep-title">{feat.title}</h3>
-              <p className="feature-simple-summary">{feat.simpleText}</p>
-
-              <ul className="feature-deep-points">
-                {feat.points.map((pt, pIdx) => (
-                  <li key={pIdx}>
-                    <Check size={14} className="feature-check-icon" />
-                    <span>{pt}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="feature-formats-list">
-                <span className="feature-formats-heading">Supported Formats:</span>
-                <div className="feature-format-chips">
-                  {feat.bestForFormats.map((fmt, fIdx) => (
-                    <span key={fIdx} className="format-chip">
-                      <strong>{fmt.label}</strong> ({fmt.ext})
-                    </span>
-                  ))}
-                </div>
-              </div>
+      <div className="lifecycle-grid">
+        {FILE_SHARING_LIFECYCLE_STEPS.map((item) => (
+          <div key={item.step} className="lifecycle-card">
+            <div className="lifecycle-header">
+              <div className="lifecycle-step-num">{item.step}</div>
+              <h3 className="lifecycle-step-title">{item.title}</h3>
             </div>
-          );
-        })}
+            <p className="lifecycle-step-desc">{item.desc}</p>
+            <span className="lifecycle-step-detail">{item.detail}</span>
+          </div>
+        ))}
       </div>
     </section>
   );
 });
 
 /**
- * Mode Comparison Table (SRP: Side-by-side mode capabilities)
+ * Point-Wise Feature Explanation Deep-Dive Cards
+ */
+const FeatureDeepDiveSection = memo(function FeatureDeepDiveSection({ activeId, onSelectFeature }) {
+  const activeFeature = FEATURE_EXPLANATIONS.find((f) => f.id === activeId) || FEATURE_EXPLANATIONS[0];
+  const Icon = activeFeature.icon;
+
+  return (
+    <section id="features" className="features-deep-section" aria-label="Feature Explanations">
+      <div className="section-header">
+        <span className="section-tag">POINT-WISE FEATURE EXPLANATIONS</span>
+        <h2 className="section-title">Every Feature Explained Clearly</h2>
+        <p className="section-subtitle">
+          Click any feature below to see what it does, why to use it, limits, and where data is stored.
+        </p>
+      </div>
+
+      {/* Feature Selector Tabs */}
+      <div className="guide-tabs-container" role="tablist">
+        {FEATURE_EXPLANATIONS.map((feat) => {
+          const FeatIcon = feat.icon;
+          const isActive = activeId === feat.id;
+          return (
+            <button
+              key={feat.id}
+              role="tab"
+              aria-selected={isActive}
+              className={`guide-tab-btn ${isActive ? 'active' : ''}`}
+              onClick={() => onSelectFeature(feat.id)}
+            >
+              <div className="guide-tab-icon">
+                <FeatIcon size={18} />
+              </div>
+              <div className="guide-tab-info">
+                <span className="guide-tab-title">{feat.title.split('(')[0].trim()}</span>
+                <span className="guide-tab-subtitle">{feat.badge}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Active Feature Detail Card (7-Questions Point-Wise) */}
+      <div className="guide-mode-card animate-in" key={activeFeature.id}>
+        <div className="guide-mode-header">
+          <div className="guide-mode-title-group">
+            <div className="guide-mode-icon-circle">
+              <Icon size={24} />
+            </div>
+            <div>
+              <div className="guide-mode-badge-row">
+                <h3 className="guide-mode-title">{activeFeature.title}</h3>
+                <span className={`badge ${activeFeature.badgeColor}`}>{activeFeature.badge}</span>
+              </div>
+              <p className="guide-mode-desc">{activeFeature.whatIsIt}</p>
+            </div>
+          </div>
+
+          <Link to="/upload" className="btn btn-primary guide-action-btn">
+            Try {activeFeature.title.split('(')[0].trim()} <ArrowRight size={16} />
+          </Link>
+        </div>
+
+        <div className="guide-qa-grid">
+          <div className="guide-qa-item">
+            <span className="qa-tag">1. WHAT IS IT?</span>
+            <p>{activeFeature.whatIsIt}</p>
+          </div>
+
+          <div className="guide-qa-item">
+            <span className="qa-tag">2. WHY USE IT?</span>
+            <p>{activeFeature.whyUseIt}</p>
+          </div>
+
+          <div className="guide-qa-item guide-qa-item--full">
+            <span className="qa-tag">3. HOW TO USE IT (STEP-BY-STEP)</span>
+            <ol className="qa-steps-list">
+              {activeFeature.howToUse.map((step, idx) => (
+                <li key={idx}>
+                  <span className="step-badge">{idx + 1}</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="guide-qa-item">
+            <span className="qa-tag">4. WHAT HAPPENS NEXT?</span>
+            <p>{activeFeature.whatHappensNext}</p>
+          </div>
+
+          <div className="guide-qa-item">
+            <span className="qa-tag">5. IMPORTANT &amp; LIMITS</span>
+            <p>{activeFeature.important}</p>
+          </div>
+
+          <div className="guide-qa-item">
+            <span className="qa-tag">6. WHERE IS DATA STORED?</span>
+            <p>{activeFeature.whereStored}</p>
+          </div>
+
+          <div className="guide-qa-item">
+            <span className="qa-tag">7. WHEN IS DATA DELETED?</span>
+            <p>{activeFeature.whenDeleted}</p>
+          </div>
+
+          {activeFeature.example && (
+            <div className="guide-qa-item guide-qa-item--full guide-example-box">
+              <span className="qa-tag">REAL-WORLD EXAMPLE</span>
+              <p>💡 {activeFeature.example}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+});
+
+/**
+ * Storage & Privacy Architecture Section
+ */
+const StoragePolicySection = memo(function StoragePolicySection() {
+  return (
+    <section className="storage-policy-section" aria-label="Data Storage and Security">
+      <div className="section-header">
+        <span className="section-tag">SECURITY &amp; DATA STORAGE</span>
+        <h2 className="section-title">Where Your Data Is Stored</h2>
+        <p className="section-subtitle">
+          Transparent separation of structured metadata, temporary ciphertext, and device cache.
+        </p>
+      </div>
+
+      <div className="storage-grid">
+        {DATA_STORAGE_POLICY.sections.map((sec, idx) => (
+          <div key={idx} className="storage-policy-card">
+            <div className="storage-policy-header">
+              <strong>{sec.category}</strong>
+              <span className="badge badge-slate">{sec.storageLocation}</span>
+            </div>
+            <ul className="storage-policy-points">
+              {sec.whatStored.map((pt, pIdx) => (
+                <li key={pIdx}>• {pt}</li>
+              ))}
+            </ul>
+            <div className="storage-retention-tag">
+              <span className="retention-label">Retention &amp; Deletion:</span>
+              <span className="retention-text">{sec.retention}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+});
+
+/**
+ * Mode Comparison Table
  */
 const ModeComparisonTable = memo(function ModeComparisonTable() {
   return (
@@ -245,7 +296,7 @@ const ModeComparisonTable = memo(function ModeComparisonTable() {
 });
 
 /**
- * FAQ Accordion List (SRP: Expandable security questions)
+ * FAQ Accordion List
  */
 const FaqAccordionSection = memo(function FaqAccordionSection({ expandedIndex, onToggleFaq }) {
   return (
@@ -254,7 +305,7 @@ const FaqAccordionSection = memo(function FaqAccordionSection({ expandedIndex, o
         <span className="section-tag">FREQUENTLY ASKED QUESTIONS</span>
         <h2 className="section-title">Common Questions &amp; Answers</h2>
         <p className="section-subtitle">
-          Quick answers to help you understand how files stay private and safe.
+          Quick answers to help you understand how files stay private, secure, and ephemeral.
         </p>
       </div>
 
@@ -290,7 +341,7 @@ const FaqAccordionSection = memo(function FaqAccordionSection({ expandedIndex, o
 });
 
 /**
- * Bottom Call-to-Action Banner (SRP: Transfer kickoff CTA)
+ * Bottom Call-to-Action Banner
  */
 const CtaBannerSection = memo(function CtaBannerSection() {
   return (
@@ -317,40 +368,26 @@ const CtaBannerSection = memo(function CtaBannerSection() {
 });
 
 /**
- * Main HowToUseSection orchestrator component adhering to Single Responsibility Principle.
+ * Main HowToUseSection orchestrator component
  */
 export function HowToUseSection() {
-  const [activeTab, setActiveTab] = useState('cloud');
+  const [activeFeatureId, setActiveFeatureId] = useState('file_sharing');
   const [expandedFaq, setExpandedFaq] = useState(null);
 
-  const handleSelectMode = useCallback((modeId) => {
-    setActiveTab(modeId);
+  const handleSelectFeature = useCallback((id) => {
+    setActiveFeatureId(id);
   }, []);
 
   const handleToggleFaq = useCallback((index) => {
     setExpandedFaq((prev) => (prev === index ? null : index));
   }, []);
 
-  const currentMode = TRANSFER_MODES.find((m) => m.id === activeTab) || TRANSFER_MODES[0];
-
   return (
     <div className="how-to-use-wrapper">
       <QuickPickSection />
-
-      <section id="how-to-use" className="guide-section" aria-label="How to Use">
-        <div className="section-header">
-          <span className="section-tag">STEP-BY-STEP USER GUIDE</span>
-          <h2 className="section-title">How to Use FileShare</h2>
-          <p className="section-subtitle">
-            Click any transfer mode below to see simple, step-by-step instructions.
-          </p>
-        </div>
-
-        <ModeTabsNav activeTab={activeTab} onSelectMode={handleSelectMode} />
-        <ModeWalkthroughCard mode={currentMode} />
-      </section>
-
-      <FeaturesDeepGrid />
+      <FileSharingLifecycleSection />
+      <FeatureDeepDiveSection activeId={activeFeatureId} onSelectFeature={handleSelectFeature} />
+      <StoragePolicySection />
       <ModeComparisonTable />
       <FaqAccordionSection expandedIndex={expandedFaq} onToggleFaq={handleToggleFaq} />
       <CtaBannerSection />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Download, ArrowLeft, Search, Flame } from 'lucide-react';
+import { Download, ArrowLeft, Search, Flame, ShieldAlert } from 'lucide-react';
 import { parseTransferCode, extractKeyFromUrl } from '../crypto';
 import { TransferStateMachine, TransferState } from '../stateMachine';
 import { PreviewManager } from '../previewManager';
@@ -13,10 +13,12 @@ import { CodeSearchInput } from '../components/download/CodeSearchInput';
 import { DownloadFileCard } from '../components/download/DownloadFileCard';
 import { DecryptedFilesList } from '../components/download/DecryptedFilesList';
 import { FilePreviewModal } from '../components/download/FilePreviewModal';
+import { ExpiredFileCard } from '../components/download/ExpiredFileCard';
+import { QRScannerModal } from '../components/download/QRScannerModal';
 
 /**
  * Download Page Orchestrator Component
- * Primary Responsibility: Manage state for download workflows, orchestrating code search, decrypting, previewing, and saving.
+ * Primary Responsibility: Manage state for download workflows, orchestrating code search, QR scanning, decrypting, previewing, and saving.
  */
 function DownloadPage() {
   const { fileId: urlFileId } = useParams();
@@ -25,6 +27,9 @@ function DownloadPage() {
   const [currentState, setCurrentState] = useState(TransferState.IDLE);
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [codeInput, setCodeInput] = useState(urlFileId || '');
+
+  // QR Scanner Modal State
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   // Search guards
   const searchInFlightRef = useRef(false);
@@ -47,6 +52,9 @@ function DownloadPage() {
     error,
     success,
     isBurned,
+    isExpired,
+    expiredReason,
+    expiredMessage,
     manualKey,
     needsKey,
     decryptedFiles,
@@ -133,6 +141,14 @@ function DownloadPage() {
     } catch (_) {}
   };
 
+  const handleQRDetected = (scannedCode) => {
+    if (!scannedCode || !scannedCode.trim()) return;
+    const cleaned = scannedCode.trim();
+    setCodeInput(cleaned);
+    const parsed = parseTransferCode(cleaned);
+    handleSearchCode(cleaned, parsed.key);
+  };
+
   const handleNewSearch = () => {
     closeAndRevokePreview();
     revokeDecryptedUrl();
@@ -178,7 +194,7 @@ function DownloadPage() {
 
       <div className="page-header">
         <h2><Download size={22} /> Receive Files</h2>
-        <p>Paste your full transfer code below to connect, preview, and download encrypted files.</p>
+        <p>Enter your transfer code or scan a QR code below to connect, preview, and download encrypted files.</p>
       </div>
 
       <CodeSearchInput
@@ -186,6 +202,7 @@ function DownloadPage() {
         onChangeCodeInput={setCodeInput}
         onSearchCode={handleSearchCode}
         onPasteClipboard={handlePasteClipboard}
+        onOpenQRScanner={() => setShowQRScanner(true)}
         isLoading={isLoading}
         isDecrypting={isDecrypting}
       />
@@ -193,8 +210,17 @@ function DownloadPage() {
       {/* Loading Skeletons */}
       {isLoading && <FileInfoSkeleton />}
 
-      {/* Error state */}
-      {error && !isLoading && (
+      {/* Expired / Limit Reached / Burned State */}
+      {isExpired && !isLoading && (
+        <ExpiredFileCard
+          reason={expiredReason}
+          customMessage={expiredMessage}
+          onNewSearch={handleNewSearch}
+        />
+      )}
+
+      {/* General Error state (only if not expired) */}
+      {error && !isLoading && !isExpired && (
         <ErrorAlert
           message={error}
           onRetry={codeInput ? () => handleSearchCode(codeInput) : null}
@@ -202,17 +228,18 @@ function DownloadPage() {
       )}
 
       {/* Empty State when idle */}
-      {!fileInfo && !isLoading && !error && !success && !isBurned && (
+      {!fileInfo && !isLoading && !error && !isExpired && !success && !isBurned && (
         <EmptyState
           icon={Search}
           title="No active transfer selected"
-          description="Enter a transfer code or share link from the sender to connect, inspect file details, preview, and download."
+          description="Enter a transfer code or scan a QR code from the sender to connect, inspect file details, preview, and download."
           actionText="Paste from Clipboard"
           onAction={handlePasteClipboard}
         />
       )}
 
-      {fileInfo && !success && (
+      {/* Active Download Details Card */}
+      {fileInfo && !success && !isExpired && (
         <DownloadFileCard
           fileInfo={fileInfo}
           isBurned={isBurned}
@@ -229,6 +256,7 @@ function DownloadPage() {
         />
       )}
 
+      {/* Successfully Decrypted Files */}
       {success && fileInfo && (
         <DecryptedFilesList
           decryptedFiles={decryptedFiles}
@@ -242,18 +270,14 @@ function DownloadPage() {
         />
       )}
 
-      {isBurned && !success && (
-        <div className="burn-banner">
-          <Flame size={20} className="burn-icon" />
-          <div>
-            <strong className="burn-title">File Self-Destructed &amp; Purged!</strong>
-            <p className="burn-copy">
-              The server permanently deleted this file.
-            </p>
-          </div>
-        </div>
-      )}
+      {/* QR Scanner Camera Modal */}
+      <QRScannerModal
+        isOpen={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+        onCodeDetected={handleQRDetected}
+      />
 
+      {/* File Preview Modal */}
       <FilePreviewModal
         isOpen={showPreviewModal}
         activePreviewItem={activePreviewItem}

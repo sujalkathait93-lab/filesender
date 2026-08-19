@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Flame, Radio, Key, Loader2, Eye, Lock } from 'lucide-react';
+import { FileText, Flame, Radio, Key, Loader2, Eye, Lock, ShieldCheck, Clock } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 import { MeasurableProgressBar } from '../FeedbackStates';
 
@@ -23,8 +23,25 @@ export function DownloadFileCard({
 }) {
   if (!fileInfo) return null;
 
+  const isBurn = Boolean(fileInfo.burn_on_read) || fileInfo.max_downloads === 1;
+  const remainingDownloads = fileInfo.downloads_remaining !== undefined && fileInfo.downloads_remaining !== null
+    ? fileInfo.downloads_remaining
+    : fileInfo.max_downloads > 0
+    ? Math.max(0, fileInfo.max_downloads - fileInfo.download_count)
+    : null;
+
+  const getStatusText = () => {
+    if (isBurn) {
+      return 'Active (1 download remaining • Burn After Read)';
+    }
+    if (fileInfo.max_downloads === 0) {
+      return 'Unlimited (Active until expiry)';
+    }
+    return `Active • ${fileInfo.download_count} of ${fileInfo.max_downloads} used (${remainingDownloads} remaining)`;
+  };
+
   return (
-    <div className="file-info animate-in">
+    <div className="file-info animate-in" role="region" aria-label="Transfer Details">
       <div className="file-info-header">
         <div className="file-icon file-icon--success">
           <FileText size={20} />
@@ -43,30 +60,22 @@ export function DownloadFileCard({
           <span>{formatBytes(fileInfo.original_size)}</span>
         </div>
         <div className="meta-item">
-          <label>Downloads</label>
-          <span>
-            {fileInfo.burn_on_read
-              ? '1 (Burn on read)'
-              : fileInfo.max_downloads === 0
-              ? 'Unlimited'
-              : `${fileInfo.download_count} of ${fileInfo.max_downloads} used`}
-          </span>
+          <label>Download Status</label>
+          <span>{getStatusText()}</span>
         </div>
         <div className="meta-item">
-          <label>Expires</label>
+          <label>Expires At</label>
           <span>{new Date(fileInfo.expires_at).toLocaleTimeString()}</span>
         </div>
       </div>
 
-      {fileInfo.burn_on_read && !isBurned && (
+      {isBurn && !isBurned && (
         <div className="burn-banner">
           <Flame size={20} className="burn-icon" />
           <div>
-            <strong className="burn-title">
-              Burn-on-Read Active
-            </strong>
+            <strong className="burn-title">Burn After Read Active</strong>
             <span className="burn-copy">
-              File permanently self-destructs from the server immediately after download.
+              File permanently self-destructs from the server immediately after your download.
             </span>
           </div>
         </div>
@@ -91,6 +100,7 @@ export function DownloadFileCard({
             value={manualKey}
             onChange={(e) => setManualKey(e.target.value)}
             className="manual-key-input"
+            aria-label="Decryption key input"
           />
         </div>
       )}
@@ -111,8 +121,9 @@ export function DownloadFileCard({
           <button
             onClick={() => onExecuteDownload(false, onPreviewReady)}
             disabled={isDecrypting}
-            className="btn btn-secondary"
+            className="btn btn-secondary btn-lg"
             title="View files in browser without downloading"
+            aria-label="Preview files in browser"
           >
             {isDecrypting ? <Loader2 size={16} className="spin" /> : <Eye size={16} />}
             <span>Preview Files</span>
@@ -121,7 +132,8 @@ export function DownloadFileCard({
             onClick={() => onExecuteDownload(true)}
             disabled={isDecrypting}
             aria-busy={isDecrypting}
-            className="btn btn-primary"
+            className="btn btn-primary btn-lg"
+            aria-label="Save and download file"
           >
             {isDecrypting ? (
               <>

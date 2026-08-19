@@ -1,13 +1,15 @@
 import React, { useState, useEffect, Suspense, lazy, useCallback } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, WifiOff } from 'lucide-react';
 import { PageSkeletonLoader } from './components/Skeletons';
 import { HowToUseSection } from './components/HowToUseSection';
 import { Navbar } from './components/layout/Navbar';
 import { MobileNav } from './components/layout/MobileNav';
 import { Footer } from './components/layout/Footer';
 import { HeroSection } from './components/home/HeroSection';
+import { SettingsModal } from './components/layout/SettingsModal';
 import { useTheme } from './context/ThemeContext';
+import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { api } from './services/api';
 import './App.css';
 
@@ -33,11 +35,12 @@ function HomePage({ onScrollToSection }) {
 }
 
 /**
- * Main Application Root (SRP: Global routing, theme coordination, and health monitoring)
+ * Main Application Root (SRP: Global routing, theme coordination, network health monitoring)
  */
 function App() {
   const [serverOnline, setServerOnline] = useState(null);
   const [ephemeralStorage, setEphemeralStorage] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try {
       return sessionStorage.getItem('fileshare_banner_dismissed') === '1';
@@ -47,6 +50,7 @@ function App() {
   });
 
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const { isOnline } = useNetworkStatus();
   const location = useLocation();
 
   useEffect(() => {
@@ -114,11 +118,22 @@ function App() {
     <div className="app">
       <SpeedInsights />
 
+      {/* Offline Status Banner */}
+      {!isOnline && (
+        <div className="offline-banner animate-in" role="alert">
+          <div className="offline-banner-content">
+            <WifiOff size={18} />
+            <span>You are currently offline. An active network connection is required to upload or receive files.</span>
+          </div>
+        </div>
+      )}
+
       <Navbar
         serverOnline={serverOnline}
         theme={theme}
         resolvedTheme={resolvedTheme}
         onCycleTheme={handleCycleTheme}
+        onOpenSettings={() => setShowSettings(true)}
         currentPath={location.pathname}
         currentHash={location.hash}
         onScrollToSection={scrollToSection}
@@ -154,9 +169,18 @@ function App() {
         currentPath={location.pathname}
         currentHash={location.hash}
         onScrollToSection={scrollToSection}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       <Footer onScrollToSection={scrollToSection} />
+
+      {/* Global Settings & Privacy Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        serverOnline={serverOnline}
+        ephemeralStorage={ephemeralStorage}
+      />
     </div>
   );
 }

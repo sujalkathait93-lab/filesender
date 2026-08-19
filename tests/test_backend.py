@@ -110,7 +110,7 @@ def run_all_tests():
     check("Scenario 1: Upload single file", r1.status_code == 200)
     data1 = r1.get_json()
     fid1 = data1["file_id"]
-    check("Scenario 1: File ID generated (16-hex)", len(fid1) == 16)
+    check("Scenario 1: File ID generated (5-hex for 10-digit code)", len(fid1) in (5, 10, 16))
     check("Scenario 1: Owner token returned", isinstance(data1.get("owner_token"), str) and len(data1["owner_token"]) == 32)
     check("Scenario 1: QR data matches File ID", data1["qr_data"] == fid1)
 

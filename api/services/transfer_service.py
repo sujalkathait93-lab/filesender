@@ -69,7 +69,7 @@ class TransferService:
             raise
 
         expires_at = get_utc_now() + timedelta(hours=expiry_hours)
-        effective_max_downloads = 1 if burn_on_read == 1 else max_downloads
+        effective_max_downloads = max_downloads
 
         conn = self.db.get_connection()
         try:
@@ -130,7 +130,7 @@ class TransferService:
         transfer_id = transfer_id or file_id
         owner_token = generate_owner_token()
         expires_at = get_utc_now() + timedelta(hours=expiry_hours)
-        effective_max_downloads = 1 if burn_on_read == 1 else max_downloads
+        effective_max_downloads = max_downloads
 
         conn = self.db.get_connection()
         try:
@@ -295,15 +295,15 @@ class TransferService:
         conn = self.db.get_connection()
         try:
             row = conn.execute(
-                "SELECT * FROM files WHERE id = ? AND expires_at > ?",
-                (file_id, get_utc_now().isoformat())
+                "SELECT * FROM files WHERE id = ?",
+                (file_id,)
             ).fetchone()
 
             if not row:
                 # Try transfer lookup (legacy share links point at transfer IDs)
                 t_row = conn.execute(
-                    "SELECT * FROM transfers WHERE id = ? AND expires_at > ?",
-                    (file_id, get_utc_now().isoformat())
+                    "SELECT * FROM transfers WHERE id = ?",
+                    (file_id,)
                 ).fetchone()
                 if t_row:
                     row = conn.execute(
@@ -312,18 +312,26 @@ class TransferService:
                     ).fetchone()
 
             if not row:
-                # Check if it was in the DB but expired
-                expired_check = conn.execute("SELECT id FROM files WHERE id = ? OR transfer_id = ?", (file_id, file_id)).fetchone()
-                if expired_check:
-                    raise GoneError("Transfer has expired")
                 raise NotFoundError("Transfer not found or expired")
 
-            if row["status"] == "burned" or (bool(row["burn_on_read"]) and row["download_count"] >= 1):
-                raise GoneError("File has self-destructed (Burn-on-Read active)")
+            now_iso = get_utc_now().isoformat()
+            if row["expires_at"] and row["expires_at"] <= now_iso:
+                raise GoneError("This file is no longer available because the sharing time limit has expired.")
+
+            if row["status"] == "burned":
+                raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+
+            if bool(row["burn_on_read"]) and row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
+                raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+
             if row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
-                raise GoneError("Download limit reached for this transfer")
+                raise GoneError("The download limit has been reached. This file is no longer available.")
 
             self._require_access_proof(row, proof)
+
+            downloads_remaining = None
+            if row["max_downloads"] > 0:
+                downloads_remaining = max(0, row["max_downloads"] - row["download_count"])
 
             return {
                 "id": row["id"],
@@ -336,6 +344,7 @@ class TransferService:
                 "expires_at": row["expires_at"],
                 "download_count": row["download_count"],
                 "max_downloads": row["max_downloads"],
+                "downloads_remaining": downloads_remaining,
                 "compressed": bool(row["compressed"]),
                 "burn_on_read": bool(row["burn_on_read"]),
                 "iv": row["iv"],
@@ -349,24 +358,31 @@ class TransferService:
 
     def download_file(self, file_id: str, preview: bool = False, proof: str = ""):
         """
-        Prepare file for download. Increments counter atomically unless preview.
+        Prepare file for download stream. Verifies availability and access proof.
         Returns (row_dict, file_path, is_burn).
         """
         conn = self.db.get_connection()
         try:
             row = conn.execute(
-                "SELECT * FROM files WHERE id = ? AND expires_at > ?",
-                (file_id, get_utc_now().isoformat())
+                "SELECT * FROM files WHERE id = ?",
+                (file_id,)
             ).fetchone()
 
             if not row:
-                expired_check = conn.execute("SELECT id FROM files WHERE id = ?", (file_id,)).fetchone()
-                if expired_check:
-                    raise GoneError("Transfer has expired")
                 raise NotFoundError("File not found or expired")
 
+            now_iso = get_utc_now().isoformat()
+            if row["expires_at"] and row["expires_at"] <= now_iso:
+                raise GoneError("This file is no longer available because the sharing time limit has expired.")
+
             if row["status"] == "burned":
-                raise GoneError("File has self-destructed (Burn-on-Read active)")
+                raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+
+            if bool(row["burn_on_read"]) and row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
+                raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+
+            if row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
+                raise GoneError("The download limit has been reached. This file is no longer available.")
 
             self._require_access_proof(row, proof)
 
@@ -377,30 +393,13 @@ class TransferService:
                     WHERE id = ?
                 """, (file_id,))
                 conn.commit()
-                new_count = row["download_count"]
-            elif row["max_downloads"] > 0:
-                # Atomic limit-enforcing increment (safe under concurrent downloads)
-                updated = conn.execute("""
-                    UPDATE files
-                    SET download_count = download_count + 1
-                    WHERE id = ? AND download_count < max_downloads
-                """, (file_id,))
-                if updated.rowcount == 0:
-                    if bool(row["burn_on_read"]):
-                        raise GoneError("File has self-destructed (Burn-on-Read active)")
-                    raise GoneError("Download limit reached for this transfer")
-                conn.commit()
-                new_count = row["download_count"] + 1
+                is_burn = False
             else:
-                conn.execute("""
-                    UPDATE files
-                    SET download_count = download_count + 1
-                    WHERE id = ?
-                """, (file_id,))
-                conn.commit()
-                new_count = row["download_count"] + 1
-
-            is_burn = False if preview else (bool(row["burn_on_read"]) or (row["max_downloads"] > 0 and new_count >= row["max_downloads"]))
+                next_count = row["download_count"] + 1
+                is_burn = (
+                    (bool(row["burn_on_read"]) and (row["max_downloads"] == 0 or next_count >= row["max_downloads"]))
+                    or (row["max_downloads"] > 0 and next_count >= row["max_downloads"])
+                )
         finally:
             conn.close()
 
@@ -415,12 +414,54 @@ class TransferService:
             "encrypted_size": row["encrypted_size"],
             "compressed": row["compressed"],
             "burn_on_read": row["burn_on_read"],
+            "max_downloads": row["max_downloads"],
+            "download_count": row["download_count"],
             "iv": row["iv"],
             "salt": row["salt"],
             "checksum": row["checksum"] or "",
         }
 
         return row_dict, file_path, is_burn
+
+    def record_successful_download(self, file_id: str) -> bool:
+        """
+        Atomically records a completed, successful download.
+        Purges file if max_downloads or burn_on_read threshold is reached.
+        Returns True if burned/purged, False otherwise.
+        """
+        conn = self.db.get_connection()
+        should_purge = False
+        try:
+            row = conn.execute(
+                "SELECT download_count, max_downloads, burn_on_read FROM files WHERE id = ?",
+                (file_id,)
+            ).fetchone()
+            if not row:
+                return False
+
+            updated = conn.execute("""
+                UPDATE files
+                SET download_count = download_count + 1
+                WHERE id = ?
+                RETURNING download_count, max_downloads, burn_on_read
+            """, (file_id,)).fetchone()
+
+            if updated:
+                new_count = updated["download_count"]
+                max_d = updated["max_downloads"]
+                burn = bool(updated["burn_on_read"])
+                if (burn and (max_d == 0 or new_count >= max_d)) or (max_d > 0 and new_count >= max_d):
+                    should_purge = True
+                    conn.execute("UPDATE files SET status = 'burned' WHERE id = ?", (file_id,))
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+        if should_purge:
+            self.purge_file(file_id)
+        return should_purge
 
     # ─── Purge / delete ─────────────────────────────────────────────────────
 

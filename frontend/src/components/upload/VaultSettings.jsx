@@ -1,5 +1,5 @@
-import React from 'react';
-import { Flame, Image as ImageIcon, Radio, Users, Clock, HelpCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Flame, Image as ImageIcon, Radio, Users, Clock, HelpCircle, ChevronDown, ChevronUp, Info, Check } from 'lucide-react';
 
 /**
  * VaultSettings Component
@@ -19,9 +19,11 @@ export function VaultSettings({
   isTransferring,
   onOpenGuide
 }) {
+  const [showBurnDetails, setShowBurnDetails] = useState(false);
+
   return (
     <div className="vault-settings">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h4 className="settings-heading" style={{ marginBottom: 0 }}>
           Sharing &amp; Privacy Options
         </h4>
@@ -30,18 +32,20 @@ export function VaultSettings({
           className="btn btn-ghost btn-sm"
           onClick={onOpenGuide}
           style={{ fontSize: '0.775rem', gap: 4 }}
+          aria-label="Open feature guide"
         >
           <HelpCircle size={14} /> Feature Guide
         </button>
       </div>
 
-      {/* Option 1: Burn-on-Read */}
+      {/* Option 1: Burn-on-Read (Point-Wise Explanation) */}
       <div
         className={`vault-option-card ${burnOnRead ? 'active' : ''}`}
         onClick={() => !isTransferring && onBurnToggle()}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && onBurnToggle()}
+        aria-expanded={burnOnRead}
       >
         <div className="option-card__content">
           <div className="option-card__copy">
@@ -50,11 +54,11 @@ export function VaultSettings({
             </div>
             <div>
               <div className="option-card__title-row">
-                <strong className="option-card__title">Burn-on-Read (Self-Destruct)</strong>
-                <span className="badge badge-amber">ONE-TIME USE</span>
+                <strong className="option-card__title">Burn After Read (Self-Destruct)</strong>
+                <span className="badge badge-amber">1 DOWNLOAD</span>
               </div>
               <span className="option-card__description">
-                Permanently deletes payload from the server immediately after the first recipient downloads.
+                File becomes unavailable and permanently deleted after 1 successful download.
               </span>
             </div>
           </div>
@@ -67,8 +71,41 @@ export function VaultSettings({
               onBurnToggle();
             }}
             className="option-checkbox"
-            aria-label="Burn on read"
+            aria-label="Burn after read"
           />
+        </div>
+
+        {/* Expandable Explanation for Burn After Read */}
+        <div className="vault-option-helper" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="vault-helper-toggle"
+            onClick={() => setShowBurnDetails(!showBurnDetails)}
+            aria-expanded={showBurnDetails}
+          >
+            <Info size={13} />
+            <span>How Burn After Read works</span>
+            {showBurnDetails ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+
+          {showBurnDetails && (
+            <div className="vault-helper-pane animate-in">
+              <div className="point-wise-guide">
+                <div className="guide-point">
+                  <strong>What is it?</strong>
+                  <p>File becomes unavailable and permanently purged from server memory after the selected number of successful downloads.</p>
+                </div>
+                <div className="guide-point">
+                  <strong>Why use it?</strong>
+                  <p>Prevents continued access after the intended recipient downloads.</p>
+                </div>
+                <div className="guide-point">
+                  <strong>Important:</strong>
+                  <p>Only successful, 100% completed downloads reduce the count. Incomplete or preview downloads never burn the file.</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -79,6 +116,7 @@ export function VaultSettings({
         role="button"
         tabIndex={0}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseSteganography(!useSteganography)}
+        aria-expanded={useSteganography}
       >
         <div className="option-card__content">
           <div className="option-card__copy">
@@ -116,6 +154,7 @@ export function VaultSettings({
         role="button"
         tabIndex={0}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !isTransferring && setUseP2P(!useP2P)}
+        aria-expanded={useP2P}
       >
         <div className="option-card__content">
           <div className="option-card__copy">
@@ -125,7 +164,7 @@ export function VaultSettings({
             <div>
               <div className="option-card__title-row">
                 <strong className="option-card__title">Direct P2P Transfer (WebRTC)</strong>
-                <span className="badge badge-primary">FAST STREAM &gt;500MB</span>
+                <span className="badge badge-primary">ZERO SERVER DISK</span>
               </div>
               <span className="option-card__description">
                 Streams directly peer-to-peer between devices without storing files on intermediary servers.
@@ -146,7 +185,7 @@ export function VaultSettings({
         </div>
       </div>
 
-      {/* Download limit selection */}
+      {/* Download limit selection (1, 5, 10, 30, 60, 100, Unlimited) */}
       <div className="expiry-row">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Users size={16} className="field-icon" />
@@ -157,14 +196,15 @@ export function VaultSettings({
           value={maxDownloads}
           disabled={isTransferring}
           onChange={(e) => onMaxDownloadsChange(e.target.value)}
+          aria-label="Select maximum download limit"
         >
-          <option value={0}>Unlimited (until expiry)</option>
-          <option value={1}>1 download</option>
+          <option value={1}>1 download (Burn on read)</option>
           <option value={5}>5 downloads</option>
           <option value={10}>10 downloads (Standard)</option>
-          <option value={20}>20 downloads</option>
-          <option value={50}>50 downloads</option>
+          <option value={30}>30 downloads</option>
+          <option value={60}>60 downloads</option>
           <option value={100}>100 downloads</option>
+          <option value={0}>Unlimited (until expiry)</option>
         </select>
       </div>
 
@@ -179,6 +219,7 @@ export function VaultSettings({
           value={expiryHours}
           disabled={isTransferring}
           onChange={(e) => setExpiryHours(Number(e.target.value))}
+          aria-label="Select code expiration time"
         >
           <option value={0.25}>15 minutes</option>
           <option value={0.5}>30 minutes</option>

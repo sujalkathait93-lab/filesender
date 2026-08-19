@@ -29,10 +29,9 @@ function mapDownloadError(err, fallback) {
   if (status === 413) return 'File exceeds maximum size limit (1 GB).';
   if (status === 410 || msg.includes('expired') || msg.includes('gone') || msg.includes('deleted')) {
     if (msg.includes('preview')) return 'In-browser preview limit reached for this transfer. Click Save & Download directly.';
-    if (msg.includes('expired')) return 'This transfer code has expired (time limit reached) and was securely purged from the server.';
-    if (msg.includes('limit') || msg.includes('maximum') || msg.includes('reached')) return 'Download limit reached for this transfer.';
-    if (msg.includes('burn')) return 'This file had Burn-on-Read active and was permanently self-destructed upon first download.';
-    return 'This transfer is no longer available (it has either expired, self-destructed, or reached its download limit).';
+    if (msg.includes('limit') || msg.includes('maximum') || msg.includes('reached')) return 'The download limit has been reached. This file is no longer available.';
+    if (msg.includes('burn') || msg.includes('self-destruct')) return 'This file had Burn After Read enabled and was permanently deleted upon download.';
+    return 'This file is no longer available because the sharing time limit has expired.';
   }
   if (status === 403) return 'Access proof error: Please ensure you pasted the full transfer code (FS-id-key) rather than just the file ID.';
   if (status === 404) return 'Transfer not found: The code does not exist or was deleted by the sender.';
@@ -54,6 +53,9 @@ export function useDownload(stateMachine) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [isBurned, setIsBurned] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
+  const [expiredReason, setExpiredReason] = useState('expired');
+  const [expiredMessage, setExpiredMessage] = useState('');
   const [manualKey, setManualKey] = useState('');
   const [needsKey, setNeedsKey] = useState(false);
   const [decryptedFiles, setDecryptedFiles] = useState([]);
@@ -64,7 +66,7 @@ export function useDownload(stateMachine) {
   const fetchServerFileInfo = useCallback(async (id, activeKey) => {
     if (!activeKey) {
       setNeedsKey(true);
-      setError('Paste the full transfer code (FS-id-password). File ID alone cannot open this transfer.');
+      setError('Paste the full transfer code (FS-id-key). File ID alone cannot open this transfer.');
       stateMachine?.transitionTo(TransferState.INVALID_TOKEN);
       return;
     }
@@ -73,16 +75,25 @@ export function useDownload(stateMachine) {
       const data = await api.fileInfo(id, proof);
       setFileInfo(data);
       setNeedsKey(false);
+      setIsExpired(false);
       stateMachine?.transitionTo(TransferState.DOWNLOAD);
     } catch (err) {
       const mapped = mapDownloadError(err, err.message || 'Could not reach server. Please check your network connection.');
-      if (err.status === 410 && (err.message || '').toLowerCase().includes('burn')) {
-        setIsBurned(true);
-      }
-      setError(mapped);
-      if (err.status === 410) {
+      const msg = (err.message || '').toLowerCase();
+      if (err.status === 410 || msg.includes('expired') || msg.includes('gone') || msg.includes('limit') || msg.includes('burn')) {
+        setIsExpired(true);
+        if (msg.includes('burn')) {
+          setIsBurned(true);
+          setExpiredReason('burned');
+        } else if (msg.includes('limit') || msg.includes('maximum') || msg.includes('reached')) {
+          setExpiredReason('limit_reached');
+        } else {
+          setExpiredReason('time_expired');
+        }
+        setExpiredMessage(mapped);
         stateMachine?.transitionTo(TransferState.EXPIRED);
       } else {
+        setError(mapped);
         stateMachine?.transitionTo(TransferState.FAILED);
       }
     }
@@ -101,6 +112,7 @@ export function useDownload(stateMachine) {
     setIsLoading(true);
     setError(null);
     setIsBurned(false);
+    setIsExpired(false);
     setFileInfo(null);
     setSuccess(false);
     setProgress(null);
@@ -235,10 +247,23 @@ export function useDownload(stateMachine) {
 
       setProgress({ stage: 'complete', percent: 100 });
     } catch (err) {
-      if (!isBurned) {
+      const msg = (err.message || '').toLowerCase();
+      if (err.status === 410 || msg.includes('expired') || msg.includes('gone') || msg.includes('limit') || msg.includes('burn')) {
+        setIsExpired(true);
+        if (msg.includes('burn')) {
+          setIsBurned(true);
+          setExpiredReason('burned');
+        } else if (msg.includes('limit') || msg.includes('maximum') || msg.includes('reached')) {
+          setExpiredReason('limit_reached');
+        } else {
+          setExpiredReason('time_expired');
+        }
+        setExpiredMessage(mapDownloadError(err, 'This file is no longer available.'));
+        stateMachine?.transitionTo(TransferState.EXPIRED);
+      } else if (!isBurned) {
         setError(mapDownloadError(err, 'Download failed. Please check the code and retry.'));
+        stateMachine?.transitionTo(TransferState.FAILED);
       }
-      stateMachine?.transitionTo(TransferState.FAILED);
       setProgress(null);
     } finally {
       setIsDecrypting(false);
@@ -252,6 +277,9 @@ export function useDownload(stateMachine) {
     setError(null);
     setSuccess(false);
     setIsBurned(false);
+    setIsExpired(false);
+    setExpiredReason('expired');
+    setExpiredMessage('');
     setProgress(null);
     setManualKey('');
     setNeedsKey(false);
@@ -276,6 +304,9 @@ export function useDownload(stateMachine) {
     error,
     success,
     isBurned,
+    isExpired,
+    expiredReason,
+    expiredMessage,
     manualKey,
     needsKey,
     decryptedFiles,

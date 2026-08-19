@@ -118,7 +118,7 @@ export function useEncryptAndSend(stateMachine) {
       stateMachine?.transitionTo(TransferState.CREATING_TRANSFER);
       throttle.push(updateProgressWithMetrics('uploading', 88));
 
-      const effectiveMaxDownloads = burnOnRead ? 1 : Number(maxDownloads);
+      const effectiveMaxDownloads = Number(maxDownloads);
 
       const uploadMetadata = {
         filename: uploadFileName,

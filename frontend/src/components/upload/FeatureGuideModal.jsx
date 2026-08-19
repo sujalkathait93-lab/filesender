@@ -1,11 +1,17 @@
-import React, { useEffect } from 'react';
-import { HelpCircle, X, Sparkles, Flame, Image as ImageIcon, Radio } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  HelpCircle, X, Upload, Flame, Radio, Image as ImageIcon,
+  ShieldCheck, Clock, Eye, Check, Info, Database, ArrowRight
+} from 'lucide-react';
+import { FEATURE_EXPLANATIONS, FILE_SHARING_LIFECYCLE_STEPS } from '../../data/guideData';
 
 /**
  * FeatureGuideModal Component
- * Primary Responsibility: Display explanatory modal guide for file privacy and transfer features.
+ * Primary Responsibility: Display comprehensive, point-wise 7-question guide for all features, limits, and storage rules.
  */
 export function FeatureGuideModal({ isOpen, onClose }) {
+  const [activeTab, setActiveTab] = useState('file_sharing');
+
   useEffect(() => {
     if (!isOpen) return undefined;
     const onKey = (e) => {
@@ -17,63 +23,112 @@ export function FeatureGuideModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  const currentFeature = FEATURE_EXPLANATIONS.find((f) => f.id === activeTab) || FEATURE_EXPLANATIONS[0];
+  const Icon = currentFeature.icon;
+
   return (
-    <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Feature & Privacy Guide">
-      <div className="preview-modal">
+    <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Complete Feature & Privacy Guide">
+      <div className="preview-modal feature-guide-modal animate-in">
         <div className="preview-header">
           <h3><HelpCircle size={18} /> Feature &amp; Privacy Guide</h3>
           <button className="preview-close" onClick={onClose} aria-label="Close guide">
             <X size={18} />
           </button>
         </div>
-        <div className="preview-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Sparkles size={18} style={{ color: 'var(--accent)' }} />
-              <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Smart Transfer Optimization</strong>
-              <span className="badge badge-primary">Automatic</span>
-            </div>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-              <strong>How it works:</strong> Automatically assigns optimal chunk size, buffer depth, and in-flight parallelism based on file size, so you never have to configure technical transfer settings manually.
-            </p>
-          </div>
 
-          <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Flame size={18} style={{ color: 'var(--warning-fg)' }} />
-              <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Burn-on-Read (Self-Destruct)</strong>
-              <span className="badge badge-amber">One-Time</span>
-            </div>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-              <strong>How it works:</strong> The moment the recipient finishes downloading, the file is automatically and permanently purged from the server memory and disk.
-            </p>
-          </div>
+        {/* Feature Selector Tabs */}
+        <div className="guide-modal-tabs" role="tablist">
+          {FEATURE_EXPLANATIONS.map((feat) => {
+            const FeatIcon = feat.icon;
+            const isActive = activeTab === feat.id;
+            return (
+              <button
+                key={feat.id}
+                role="tab"
+                aria-selected={isActive}
+                className={`guide-modal-tab-btn ${isActive ? 'active' : ''}`}
+                onClick={() => setActiveTab(feat.id)}
+              >
+                <FeatIcon size={15} />
+                <span>{feat.title.split('(')[0].trim()}</span>
+              </button>
+            );
+          })}
+        </div>
 
-          <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <ImageIcon size={18} style={{ color: 'var(--success-fg)' }} />
-              <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Steganography Image Vault</strong>
-              <span className="badge badge-emerald">&lt;10 MB</span>
+        <div className="guide-modal-body">
+          {/* Active Feature Detail Card */}
+          <div className="guide-modal-card animate-in" key={currentFeature.id}>
+            <div className="guide-modal-card-top">
+              <div className="guide-modal-icon-badge">
+                <Icon size={22} />
+              </div>
+              <div>
+                <div className="guide-modal-title-row">
+                  <h4>{currentFeature.title}</h4>
+                  <span className={`badge ${currentFeature.badgeColor}`}>{currentFeature.badge}</span>
+                </div>
+                <p className="guide-modal-summary">{currentFeature.whatIsIt}</p>
+              </div>
             </div>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-              <strong>How it works:</strong> Injects encrypted file bytes into the least-significant bits (LSB) of innocent-looking PNG image pixels to bypass strict network DPI firewalls.
-            </p>
-          </div>
 
-          <div style={{ padding: 12, backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Radio size={18} style={{ color: 'var(--accent)' }} />
-              <strong style={{ color: 'var(--fg-default)', fontSize: '0.9rem' }}>Direct P2P Transfer (WebRTC)</strong>
-              <span className="badge badge-primary">&gt;500 MB</span>
+            {/* 7-Question Point-Wise Grid */}
+            <div className="guide-qa-grid">
+              <div className="guide-qa-item">
+                <span className="qa-tag">1. WHAT IS IT?</span>
+                <p>{currentFeature.whatIsIt}</p>
+              </div>
+
+              <div className="guide-qa-item">
+                <span className="qa-tag">2. WHY USE IT?</span>
+                <p>{currentFeature.whyUseIt}</p>
+              </div>
+
+              <div className="guide-qa-item guide-qa-item--full">
+                <span className="qa-tag">3. HOW TO USE IT (STEP-BY-STEP)</span>
+                <ol className="qa-steps-list">
+                  {currentFeature.howToUse.map((step, idx) => (
+                    <li key={idx}>
+                      <span className="step-badge">{idx + 1}</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="guide-qa-item">
+                <span className="qa-tag">4. WHAT HAPPENS NEXT?</span>
+                <p>{currentFeature.whatHappensNext}</p>
+              </div>
+
+              <div className="guide-qa-item">
+                <span className="qa-tag">5. IMPORTANT &amp; LIMITS</span>
+                <p>{currentFeature.important}</p>
+              </div>
+
+              <div className="guide-qa-item">
+                <span className="qa-tag">6. WHERE IS DATA STORED?</span>
+                <p>{currentFeature.whereStored}</p>
+              </div>
+
+              <div className="guide-qa-item">
+                <span className="qa-tag">7. WHEN IS DATA DELETED?</span>
+                <p>{currentFeature.whenDeleted}</p>
+              </div>
+
+              {currentFeature.example && (
+                <div className="guide-qa-item guide-qa-item--full guide-example-box">
+                  <span className="qa-tag">REAL-WORLD EXAMPLE</span>
+                  <p>💡 {currentFeature.example}</p>
+                </div>
+              )}
             </div>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', lineHeight: 1.4 }}>
-              <strong>How it works:</strong> Establishes a direct peer-to-peer browser data channel between sender and recipient without intermediate server storage.
-            </p>
           </div>
         </div>
+
         <div className="preview-footer">
-          <button className="btn btn-primary btn-sm" onClick={onClose}>
-            Got it
+          <button className="btn btn-primary btn-md" onClick={onClose}>
+            Got it, Let's Transfer
           </button>
         </div>
       </div>

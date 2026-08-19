@@ -1,17 +1,18 @@
 import React, { memo } from 'react';
 import { Link } from 'react-router-dom';
-import { Zap, Upload, Download, BookOpen, Sun, Moon, Monitor } from 'lucide-react';
+import { Zap, Upload, Download, BookOpen, Sun, Moon, Monitor, Settings } from 'lucide-react';
 import brandLogo from '../../image/icons.png';
 
 /**
  * App Navbar Component
- * Primary Responsibility: Top navigation header with brand logo, route links, backend status indicator, and theme toggle.
+ * Primary Responsibility: Top navigation header with brand logo, route links, backend status indicator, theme toggle, and settings trigger.
  */
 export const Navbar = memo(function Navbar({
   serverOnline,
   theme,
   resolvedTheme,
   onCycleTheme,
+  onOpenSettings,
   currentPath,
   currentHash,
   onScrollToSection
@@ -76,6 +77,17 @@ export const Navbar = memo(function Navbar({
               <Sun size={16} />
             )}
           </button>
+
+          {onOpenSettings && (
+            <button
+              className="settings-toggle-btn"
+              onClick={onOpenSettings}
+              aria-label="Open Settings & Privacy"
+              title="Settings & Privacy"
+            >
+              <Settings size={16} />
+            </button>
+          )}
         </div>
       </div>
     </nav>

@@ -1,285 +1,291 @@
 import {
   Upload, Download, ShieldCheck, Lock, Radio, Image as ImageIcon,
   Flame, Key, Zap, CheckCircle2, Eye, FileText, Sparkles,
-  Layers, Check, HelpCircle, Archive, Video, Music, FileCode, Disc
-} from 'lucide-react'
+  Layers, Check, HelpCircle, Archive, Video, Music, FileCode,
+  HardDrive, Clock, Smartphone, Globe, Shield, RefreshCw
+} from 'lucide-react';
 
-export const TRANSFER_MODES = [
+/**
+ * 9-Step Complete File Sharing Process
+ */
+export const FILE_SHARING_LIFECYCLE_STEPS = [
   {
-    id: 'cloud',
-    title: 'Cloud Encrypted',
-    subtitle: 'Standard Share',
-    icon: Upload,
-    badge: 'Recommended',
-    badgeColor: 'badge-primary',
-    simpleSummary: 'Lock your files in your browser and share with a Transfer Code or QR code.',
-    bestFor: 'Any files up to 1 GB (PDFs, docs, photos, videos, ZIPs)',
-    steps: [
-      {
-        number: 1,
-        title: 'Choose Your Files',
-        desc: 'Drag and drop your files or click to browse. Files stay on your device until encrypted.',
-        tip: 'Works with single files or entire multi-file bundles up to 1 GB.'
-      },
-      {
-        number: 2,
-        title: 'Set Privacy Options',
-        desc: 'Choose Burn-on-Read (self-destructs after 1st download) and set an expiry time (15 to 60 mins).',
-        tip: 'Once expired, files are automatically wiped forever.'
-      },
-      {
-        number: 3,
-        title: 'Browser Locks Files',
-        desc: 'Your browser generates a secret military-grade key and encrypts the file before uploading.',
-        tip: 'The secret key stays in the URL hash (#key) and is never sent to our server.'
-      },
-      {
-        number: 4,
-        title: 'Share Code or QR',
-        desc: 'Share your Transfer Code (e.g. FS-XXXX-XXXX) or dynamic QR code with the recipient.',
-        tip: 'The recipient just enters the Transfer Code or scans the QR code to download.'
-      }
-    ],
-    actionLink: '/upload',
-    actionText: 'Send Encrypted Files'
+    step: 1,
+    title: 'Select File',
+    desc: 'Choose one or multiple files from your computer or phone.',
+    detail: 'Supports documents, photos, 4K videos, archives, or entire file folders up to 1 GB.'
   },
   {
-    id: 'p2p',
-    title: 'WebRTC Direct P2P',
-    subtitle: 'Device-to-Device',
-    icon: Radio,
-    badge: 'Zero Server Storage',
-    badgeColor: 'badge-slate',
-    simpleSummary: 'Send files straight from your device to the recipient with zero server storage.',
-    bestFor: 'Huge files (large 4K videos, game files, ISOs) when both people are online',
-    steps: [
-      {
-        number: 1,
-        title: 'Turn on WebRTC P2P',
-        desc: 'In the Upload screen, toggle the "WebRTC P2P Mode" switch to start a live session.',
-        tip: 'No file bytes will be saved on any server disk.'
-      },
-      {
-        number: 2,
-        title: 'Connect with Recipient',
-        desc: 'Your browser creates a live peer room. Send the code/link to the other person.',
-        tip: 'Both people just need to keep their browser tab open during transfer.'
-      },
-      {
-        number: 3,
-        title: 'Direct Stream Begins',
-        desc: 'Data flows directly between your device and their device at maximum internet speed.',
-        tip: 'Automatic retry automatically re-sends any dropped packets.'
-      },
-      {
-        number: 4,
-        title: 'Saved Straight to Disk',
-        desc: 'The receiving browser saves incoming chunks directly to their download folder.',
-        tip: 'No browser memory limit because chunks write straight to disk.'
-      }
-    ],
-    actionLink: '/upload',
-    actionText: 'Start P2P Transfer'
+    step: 2,
+    title: 'Review Files',
+    desc: 'Inspect file names, individual sizes, and total transfer size.',
+    detail: 'Remove unwanted files or preview images/documents before sending.'
   },
   {
-    id: 'stego',
-    title: 'Steganography Vault',
-    subtitle: 'Hide in Photos',
-    icon: ImageIcon,
-    badge: 'Invisible Cloak',
-    badgeColor: 'badge-emerald',
-    simpleSummary: 'Invisibly conceal sensitive files inside the pixels of an ordinary PNG photo.',
-    bestFor: 'Secret notes, passwords, private keys, and files requiring plausible deniability',
-    steps: [
-      {
-        number: 1,
-        title: 'Select Steganography',
-        desc: 'Turn on "Steganography Vault" under Vault Options when preparing your upload.',
-        tip: 'Provide any regular PNG carrier image with enough pixel size.'
-      },
-      {
-        number: 2,
-        title: 'Embed Secret Inside Pixels',
-        desc: 'Your file is encrypted and hidden inside the microscopic pixel colors of the photo.',
-        tip: 'The output looks completely like a normal picture to the human eye.'
-      },
-      {
-        number: 3,
-        title: 'Bypass Firewalls & Scanners',
-        desc: 'Network filters and inspection tools only see standard image traffic.',
-        tip: 'Nobody inspecting the network can tell a secret file is inside.'
-      },
-      {
-        number: 4,
-        title: 'Extract with Passphrase',
-        desc: 'The recipient uploads the photo and types the password to extract the hidden file.',
-        tip: 'Only someone with the correct passphrase can unlock the data.'
-      }
-    ],
-    actionLink: '/upload',
-    actionText: 'Try Stego Vault'
+    step: 3,
+    title: 'Choose Settings',
+    desc: 'Select download limits (1 to 100 or Unlimited) and code expiry (15 to 60 min).',
+    detail: 'Optionally enable Burn After Read, Steganography Vault, or Direct P2P.'
   },
   {
-    id: 'receive',
-    title: 'Receive & Decrypt',
-    subtitle: 'Preview & Download',
-    icon: Download,
-    badge: 'No Account Needed',
-    badgeColor: 'badge-amber',
-    simpleSummary: 'Enter a Transfer Code or scan a QR code to preview and download your files instantly.',
-    bestFor: 'Anyone receiving files on computer, tablet, or phone',
-    steps: [
-      {
-        number: 1,
-        title: 'Enter Transfer Code or QR',
-        desc: 'Paste your Transfer Code (e.g. FS-XXXX-XXXX) into the Receive box, or scan the QR code.',
-        tip: 'The transfer code automatically provides the file identifier and decryption key.'
-      },
-      {
-        number: 2,
-        title: 'Instant In-Browser Unlock',
-        desc: 'Your browser uses hardware acceleration to decrypt the file safely in your sandbox.',
-        tip: 'Decryption happens on your device, not in the cloud.'
-      },
-      {
-        number: 3,
-        title: 'Inspect Live Preview',
-        desc: 'Preview photos, play videos and music, or read PDFs and code before downloading.',
-        tip: 'Choose which files you want to save or download all in one click.'
-      },
-      {
-        number: 4,
-        title: 'Save to Your Device',
-        desc: 'Files save directly into your computer or phone download folder.',
-        tip: 'If Burn-on-Read was set, the file deletes from the server immediately after.'
-      }
-    ],
-    actionLink: '/download',
-    actionText: 'Receive a File'
+    step: 4,
+    title: 'Create Share',
+    desc: 'Your browser encrypts files locally with AES-256-GCM and creates the session.',
+    detail: 'Your secret decryption key stays in your browser and is never sent to the server.'
+  },
+  {
+    step: 5,
+    title: 'Show QR & Code',
+    desc: 'Get your unique Transfer Code (e.g. FS-XXXX-XXXX) and dynamic QR code.',
+    detail: 'Share the code or let the recipient scan the QR code with their camera.'
+  },
+  {
+    step: 6,
+    title: 'Receiver Connects',
+    desc: 'The recipient enters the code or scans the QR code on any device.',
+    detail: 'No account, login, or software installation required for the receiver.'
+  },
+  {
+    step: 7,
+    title: 'Download',
+    desc: 'The recipient clicks Save & Download or chooses Preview Files.',
+    detail: 'Data streams safely through encrypted channels.'
+  },
+  {
+    step: 8,
+    title: 'Progress',
+    desc: 'Real-time progress bar displays live download speed and percentage.',
+    detail: 'Fast in-memory chunk streaming prevents browser freezing.'
+  },
+  {
+    step: 9,
+    title: 'Complete',
+    desc: 'Files are decrypted in the browser and saved directly to the device.',
+    detail: 'If Burn After Read is active, the file is permanently wiped from the server.'
   }
 ];
 
-export const FEATURES_LIST = [
+/**
+ * Point-Wise Feature Explanations (7-Question Standard)
+ */
+export const FEATURE_EXPLANATIONS = [
   {
-    icon: ShieldCheck,
-    title: 'Zero-Knowledge Cryptography',
-    simpleText: 'Your files are locked on your device before leaving your computer.',
-    tag: 'Military-Grade Lock',
-    points: [
-      'Key is generated in your browser: The server never receives or stores your encryption key.',
-      'AES-256-GCM standard: High-grade authenticated encryption standard for maximum data security.',
-      'URL Hash (#key): Key remains isolated in the browser address bar and is never transmitted to servers.'
+    id: 'file_sharing',
+    icon: Upload,
+    title: 'File Sharing (Cloud Encrypted)',
+    badge: 'Standard Transfer',
+    badgeColor: 'badge-primary',
+    whatIsIt: 'A secure way to send files to anyone using an instant Transfer Code or QR code.',
+    whyUseIt: 'Send files up to 1 GB without creating an account or uploading unencrypted files.',
+    howToUse: [
+      'Click Select File or drop your files on the Upload page.',
+      'Review your files and choose your expiry and download limit settings.',
+      'Click Send File to encrypt and receive your Transfer Code & QR code.',
+      'Share the code or QR with the recipient to let them download.'
     ],
-    bestForFormats: [
-      { label: 'PDFs & Docs', ext: '.pdf, .docx' },
-      { label: 'ID Scans', ext: '.png, .jpg' },
-      { label: 'Keys & Passwords', ext: '.txt, .env' },
-      { label: 'ZIP Bundles', ext: '.zip' }
-    ]
+    whatHappensNext: 'Files are encrypted in your browser with AES-256-GCM. The recipient enters the code and decrypts the file on their device.',
+    important: 'Transfers expire automatically after 15 to 60 minutes. Maximum total transfer size is 1 GB.',
+    whereStored: 'Structured metadata in database; encrypted ciphertext blob on temporary server storage; zero plaintext or keys on server.',
+    whenDeleted: 'Automatically wiped forever when the expiry timer ends or the download limit is reached.',
+    example: 'Sending a confidential contract PDF to a client who needs to download it within 30 minutes.'
   },
   {
-    icon: Layers,
-    title: 'Stream & Batch Pipeline',
-    simpleText: 'Files are processed in memory-safe chunks so your browser never freezes or crashes.',
-    tag: 'Smooth & Fast',
-    points: [
-      '256 KB slices: Large files are sliced progressively to prevent browser RAM overload.',
-      '2 MB batches: Groups 8 chunks together for per-batch authenticated encryption.',
-      'Direct-to-Disk: Writes incoming streams directly to storage via File System Access API.'
-    ],
-    bestForFormats: [
-      { label: '4K/HD Videos', ext: '.mp4, .mkv' },
-      { label: 'Large Archives', ext: '.zip, .rar, .7z' },
-      { label: 'System Images', ext: '.iso, .img' }
-    ]
-  },
-  {
+    id: 'burn_after_read',
     icon: Flame,
-    title: 'Burn-on-Read & Auto-Expiry',
-    simpleText: 'Self-destructing file transfer that leaves zero residual trace on the server.',
-    tag: 'Self-Destruct',
-    points: [
-      'Instant Wipe: File is permanently deleted immediately after the first successful download.',
-      'Auto-Purge Timers: Configurable 15, 30, 45, or 60-minute time-to-live expiration.',
-      'Zero Server Trace: All database records and temporary encrypted blobs are purged.'
+    title: 'Burn After Read (Download Limits)',
+    badge: 'Self-Destruct',
+    badgeColor: 'badge-amber',
+    whatIsIt: 'File becomes permanently unavailable and deleted after your selected number of successful downloads.',
+    whyUseIt: 'Prevents continued access after the intended recipients have downloaded the file.',
+    howToUse: [
+      'Toggle Burn After Read ON or select a download limit (1, 5, 10, 30, 60, or 100).',
+      'Send your transfer code or QR code to the recipient.',
+      'Once the download limit is reached, the server permanently purges the file.'
     ],
-    bestForFormats: [
-      { label: 'Confidential PDFs', ext: '.pdf' },
-      { label: 'Identity Documents', ext: '.jpg, .png' },
-      { label: 'Credentials & Seeds', ext: '.txt, .env' },
-      { label: 'Single-Use ZIPs', ext: '.zip' }
-    ]
+    whatHappensNext: 'The file blob and records are wiped. Any subsequent attempt to access the link or code shows "File Expired — The download limit has been reached."',
+    important: 'Only successful, completed downloads reduce the count. Incomplete, cancelled, or preview downloads do NOT consume a download.',
+    whereStored: 'Temporary encrypted ciphertext on server during active downloads.',
+    whenDeleted: 'Instantly purged the moment the final successful download completes.',
+    example: 'Sharing an API key or sensitive document with one person, ensuring no one else can ever access the link again.'
   },
   {
-    icon: ImageIcon,
-    title: 'Steganography Image Vault',
-    simpleText: 'Invisibly conceals encrypted secret payloads inside ordinary carrier photos.',
-    tag: 'Covert Vault',
-    points: [
-      'Pixel LSB encoding: Embeds ciphertext bits into microscopic pixel color variations.',
-      'Bypasses network filters: Deep packet inspection (DPI) sees ordinary image traffic.',
-      'Password protected: Data extraction requires the correct decryption passphrase.'
-    ],
-    bestForFormats: [
-      { label: 'Carrier Image', ext: '.png' },
-      { label: 'Hidden Documents', ext: '.pdf, .txt' },
-      { label: 'Hidden Code', ext: '.js, .py' },
-      { label: 'Small Archives', ext: '.zip' }
-    ]
-  },
-  {
+    id: 'p2p_transfer',
     icon: Radio,
     title: 'WebRTC Direct P2P Transfer',
-    simpleText: 'Direct device-to-device data streaming with zero intermediate server storage.',
-    tag: 'Device-to-Device',
-    points: [
-      'Peer-to-peer data channel: Streams directly between sender and receiver browsers.',
-      'Unlimited file capacity: Not restricted by cloud server storage constraints.',
-      'Real-time flow control: Automatically regulates throughput and retries dropped chunks.'
+    badge: 'Device-to-Device',
+    badgeColor: 'badge-slate',
+    whatIsIt: 'Direct browser-to-browser file streaming between two active devices with zero server file storage.',
+    whyUseIt: 'Transfer massive files (large 4K videos, disk images, game builds) at maximum internet speed without cloud storage limits.',
+    howToUse: [
+      'Enable "Direct P2P Transfer (WebRTC)" under Vault Options on the Upload screen.',
+      'Send your Transfer Code to the recipient while keeping your browser tab open.',
+      'When the recipient connects, data streams directly from your device to theirs.'
     ],
-    bestForFormats: [
-      { label: 'Massive Videos', ext: '.mp4, .mov' },
-      { label: 'Project Folders', ext: '.zip, .tar' },
-      { label: 'Disk Images', ext: '.iso, .dmg' },
-      { label: 'App Installers', ext: '.exe, .pkg' }
-    ]
+    whatHappensNext: 'Both devices connect via WebRTC data channel. Chunks stream directly to the receiver’s disk without touching server disks.',
+    important: 'Both the sender and receiver must keep their browser tabs open during the transfer.',
+    whereStored: 'Zero server file storage. File data exists only in browser memory and local disk on the two devices.',
+    whenDeleted: 'No server cleanup needed because file data was never stored on the server.',
+    example: 'Transferring a 5 GB raw video file directly from your laptop to a colleague’s computer across the office or globe.'
   },
   {
+    id: 'steganography_vault',
+    icon: ImageIcon,
+    title: 'Steganography Image Vault',
+    badge: 'Covert Photo Vault',
+    badgeColor: 'badge-emerald',
+    whatIsIt: 'Invisibly conceals encrypted files inside the pixel color data of a standard PNG photo.',
+    whyUseIt: 'Provides plausible deniability and allows sensitive files to bypass strict network inspection and firewalls.',
+    howToUse: [
+      'Toggle "Steganography Image Vault" ON in Vault Options.',
+      'Upload your confidential file (under 10 MB).',
+      'The output image looks like a regular picture to human eyes and image viewers.',
+      'Recipient enters the code to extract and decrypt the hidden file payload.'
+    ],
+    whatHappensNext: 'Ciphertext bytes are blended into the least significant bits of image pixels. Deep packet inspection tools only see standard image traffic.',
+    important: 'Supported for files up to 10 MB. Requires a carrier image with sufficient pixel resolution.',
+    whereStored: 'Carrier image with embedded ciphertext stored temporarily on server until expiry.',
+    whenDeleted: 'Deleted automatically when transfer expires or download limit is reached.',
+    example: 'Sending a private recovery seed or password list disguised as a vacation photo through a restricted corporate firewall.'
+  },
+  {
+    id: 'zero_knowledge_crypto',
+    icon: ShieldCheck,
+    title: 'Zero-Knowledge Cryptography',
+    badge: 'Military-Grade Security',
+    badgeColor: 'badge-primary',
+    whatIsIt: 'Client-side AES-256-GCM encryption where your browser locks files before they ever leave your device.',
+    whyUseIt: 'Complete privacy. Neither server administrators, cloud hosts, nor internet providers can ever read your files.',
+    howToUse: [
+      'No extra setup needed — zero-knowledge encryption runs automatically on every transfer.',
+      'Your browser generates a 256-bit cryptographic key and unique initialization vector (IV).',
+      'The decryption key stays in the URL hash (#key) and is never transmitted to our backend.'
+    ],
+    whatHappensNext: 'The server receives only scrambled ciphertext. Decryption happens locally inside the recipient’s browser sandbox.',
+    important: 'Do not lose your Transfer Code or link; because we do not hold your keys, lost keys cannot be recovered.',
+    whereStored: 'Encryption key stays exclusively on client devices (in browser address bar / memory).',
+    whenDeleted: 'Key is discarded when you close the browser tab or clear the transfer.',
+    example: 'Sharing personal tax documents or medical records with full assurance that no third party can inspect them.'
+  },
+  {
+    id: 'auto_expiry',
+    icon: Clock,
+    title: 'Code Expiry & Time-To-Live (TTL)',
+    badge: 'Automatic Purge',
+    badgeColor: 'badge-amber',
+    whatIsIt: 'Configurable countdown timer (15, 30, 45, or 60 minutes) that automatically deletes files when time runs out.',
+    whyUseIt: 'Guarantees that files do not linger on the server indefinitely if a recipient forgets to download.',
+    howToUse: [
+      'Select Code Expiry on the Upload page: 15 min, 30 min, 45 min, or 60 min.',
+      'The countdown begins as soon as the transfer is created.',
+      'When the timer reaches zero, the background cleanup worker immediately purges all data.'
+    ],
+    whatHappensNext: 'Once expired, attempting to use the link or code displays a clear "File Expired — Time limit reached" explanation.',
+    important: 'Maximum expiry duration is 60 minutes to ensure ephemeral privacy and prevent server clutter.',
+    whereStored: 'Expiry timestamp stored in database index for sub-millisecond automated cleanup.',
+    whenDeleted: 'Purged immediately upon reaching the exact expiry timestamp.',
+    example: 'Setting a 15-minute expiry for a one-time passcode verification file shared with a coworker.'
+  },
+  {
+    id: 'previews_and_bundles',
     icon: Eye,
     title: 'Rich Previews & Multi-File Bundles',
-    simpleText: 'Send entire file collections together and inspect them directly in the browser.',
-    tag: 'In-Browser UI',
-    points: [
-      'Multi-file bundles: Package and transfer multiple files under a single transfer session.',
-      'In-browser player: Preview images, play audio and video, read PDFs, and inspect code syntax.',
-      'Flexible saving: Download individual files selectively or save everything in one click.'
+    badge: 'In-Browser UI',
+    badgeColor: 'badge-primary',
+    whatIsIt: 'Package multiple files into a single transfer and preview photos, videos, music, PDFs, and code directly in the browser.',
+    whyUseIt: 'Inspect file contents safely before saving, or download individual files selectively from a bundle.',
+    howToUse: [
+      'Select multiple files during upload to create a bundle under a single Transfer Code.',
+      'On the Receive screen, click "Preview Files" to open the interactive in-browser viewer.',
+      'Download all files at once or save specific files individually.'
     ],
-    bestForFormats: [
-      { label: 'Photo Sets', ext: '.jpg, .png, .webp' },
-      { label: 'Audio Tracks', ext: '.mp3, .wav' },
-      { label: 'Video Clips', ext: '.mp4' },
-      { label: 'Documents & Code', ext: '.pdf, .js, .py' }
-    ]
+    whatHappensNext: 'Previews are rendered inside a secure browser sandbox without requiring external desktop software.',
+    important: 'Previewing does not consume your Burn After Read download count.',
+    whereStored: 'Decrypted preview data exists only in temporary browser memory.',
+    whenDeleted: 'Preview cache is instantly freed when you close the preview modal or leave the page.',
+    example: 'Sending a collection of 10 project design mockups so a client can preview them on their phone without downloading each one first.'
   }
 ];
 
+/**
+ * Data Storage & Privacy Architecture Breakdown
+ */
+export const DATA_STORAGE_POLICY = {
+  title: 'Data Storage & Privacy Architecture',
+  summary: 'FileShare is built on a strict zero-knowledge, privacy-first storage model.',
+  sections: [
+    {
+      category: 'Application Metadata',
+      storageLocation: 'SQLite Database',
+      whatStored: [
+        'Transfer ID (random hex identifier)',
+        'File name, size, MIME type, and cryptographic checksum',
+        'Download count & maximum download limit',
+        'Creation time & expiration timestamp',
+        'Transfer status (active, ready, uploading, burned)',
+        'Zero personal data, zero accounts, zero plaintext passwords'
+      ],
+      retention: 'Permanently deleted upon transfer expiration or download limit.'
+    },
+    {
+      category: 'File Payload Storage',
+      storageLocation: 'Temporary Server Disk (/uploads)',
+      whatStored: [
+        'AES-256-GCM encrypted ciphertext blob only',
+        'Never stored in plaintext — unreadable without the client key',
+        'Never stored inside source code, React components, or configuration files'
+      ],
+      retention: 'Purged immediately upon Burn After Read download, expiration, or sender cancellation.'
+    },
+    {
+      category: 'Temporary Upload Chunks',
+      storageLocation: 'Temporary Chunks Folder (/uploads/chunks)',
+      whatStored: [
+        'Small temporary encrypted slices (256 KB - 2 MB) during in-flight upload streaming'
+      ],
+      retention: 'Assembled into final blob and immediately deleted when upload completes.'
+    },
+    {
+      category: 'Client / Device Storage',
+      storageLocation: 'Browser Memory & LocalStorage',
+      whatStored: [
+        'Theme preference (light / dark / system) in localStorage',
+        'Decryption keys in URL hash (#key) or temporary memory only',
+        'Temporary decrypted file blob URLs (revoked on modal close)'
+      ],
+      retention: 'Memory is cleared immediately when tab is closed or download is completed.'
+    }
+  ]
+};
+
+/**
+ * Quick Decision Picker Cards
+ */
 export const QUICK_PICK_CARDS = [
   {
     icon: Upload,
     title: 'Standard Cloud Share',
-    question: 'Need to share a file securely with a Transfer Code or QR?',
+    question: 'Need to share files securely with a Transfer Code or QR code?',
     badge: 'Standard Mode',
     badgeColor: 'badge-primary',
     answer: 'Use Cloud Encrypted. It encrypts in your browser, uploads a scrambled blob, and generates an instant Transfer Code and QR code.',
     link: '/upload'
   },
   {
+    icon: Flame,
+    title: 'Burn After Read',
+    question: 'Need the file to self-destruct after 1 or a few downloads?',
+    badge: 'Self-Destruct',
+    badgeColor: 'badge-amber',
+    answer: 'Turn on Burn After Read and choose 1, 5, 10, 30, 60, or 100 downloads. Once reached, all file data is permanently wiped.',
+    link: '/upload'
+  },
+  {
     icon: Radio,
     title: 'WebRTC Direct P2P',
-    question: 'Need to send a massive video or folder with zero server limits?',
+    question: 'Need to send a massive video or folder with zero server storage?',
     badge: 'Device-to-Device',
     badgeColor: 'badge-slate',
-    answer: 'Use WebRTC P2P. Both devices connect live and stream directly with zero intermediate server disk storage.',
+    answer: 'Use WebRTC P2P. Both devices connect live and stream data directly between browsers with zero server disk storage.',
     link: '/upload'
   },
   {
@@ -288,20 +294,14 @@ export const QUICK_PICK_CARDS = [
     question: 'Need to hide a confidential file inside an innocent photo?',
     badge: 'Covert Vault',
     badgeColor: 'badge-emerald',
-    answer: 'Use Steganography Vault. It blends encrypted data into the pixels of a PNG image for complete plausible deniability.',
-    link: '/upload'
-  },
-  {
-    icon: Flame,
-    title: 'Burn-on-Read',
-    question: 'Need the file to self-destruct immediately after first download?',
-    badge: 'Self-Destruct',
-    badgeColor: 'badge-amber',
-    answer: 'Turn on Burn-on-Read during upload. The moment the file is downloaded once, it is permanently wiped forever.',
+    answer: 'Use Steganography Vault. It conceals encrypted data inside PNG photo pixels for complete plausible deniability.',
     link: '/upload'
   }
 ];
 
+/**
+ * Comparison Rows
+ */
 export const COMPARISON_ROWS = [
   {
     feature: 'How Files Are Encrypted',
@@ -319,19 +319,25 @@ export const COMPARISON_ROWS = [
     feature: 'Max File Size',
     cloud: 'Up to 1 GB',
     p2p: 'Unlimited (Live Stream)',
-    stego: 'Carrier Image Capacity'
+    stego: 'Up to 10 MB'
   },
   {
-    feature: 'Self-Destruct (Burn-on-Read)',
-    cloud: 'Supported (Instant Wipe)',
+    feature: 'Self-Destruct (Burn After Read)',
+    cloud: 'Supported (1 to 100 downloads)',
     p2p: 'N/A (Streamed Live)',
-    stego: 'Supported (Instant Wipe)'
+    stego: 'Supported (1 to 100 downloads)'
   },
   {
     feature: 'Decryption Key Security',
     cloud: 'Isolated in URL Hash (#key)',
     p2p: 'Private Peer Handshake',
     stego: 'Your Private Password'
+  },
+  {
+    feature: 'Sender Must Stay Online?',
+    cloud: 'No (Asynchronous download)',
+    p2p: 'Yes (Live direct stream)',
+    stego: 'No (Asynchronous download)'
   },
   {
     feature: 'Best Used For',
@@ -341,29 +347,32 @@ export const COMPARISON_ROWS = [
   }
 ];
 
+/**
+ * Frequently Asked Questions
+ */
 export const FAQS = [
   {
-    q: 'How does zero-knowledge encryption work in simple terms?',
-    a: 'Zero-knowledge means our servers know nothing about your file contents. Your computer encrypts the file with a secret key before sending it. The key stays inside your browser address bar (#key=...) and is never transmitted to the server. Server databases only store unreadable ciphertext blobs.'
+    q: 'What is zero-knowledge encryption and why does it matter?',
+    a: 'Zero-knowledge means our servers know nothing about your files. Your computer or phone encrypts the file before uploading. The secret decryption key remains inside your browser address bar (#key=...) and is never sent to our server. We only store an unreadable scrambled blob.'
   },
   {
-    q: 'What is Burn-on-Read, and how does it protect me?',
-    a: 'Burn-on-Read is an automated self-destruction protocol. The instant the recipient completes the first download, the server permanently purges the file record from database and storage. The transfer code becomes invalid immediately.'
+    q: 'How does Burn After Read work, and what counts as a download?',
+    a: 'Burn After Read sets a strict maximum download count (such as 1, 5, 10, 30, 60, or 100 downloads). Only successful, 100% completed downloads reduce the count. If a download is cancelled, interrupted, or previewed, it does not consume a download. Once the limit is reached, all file data is permanently purged.'
   },
   {
-    q: 'What is the difference between Cloud Encrypted and WebRTC P2P?',
-    a: 'Cloud Encrypted allows asynchronous transfers where you upload and share the code so the receiver can download whenever convenient. WebRTC P2P is a direct live pipe between two active devices where data streams straight from device to device without server storage.'
+    q: 'What happens when a file expires?',
+    a: 'When the expiration time (15 to 60 minutes) or download limit is reached, our automated cleanup system permanently deletes the encrypted blob from storage and removes the transfer records. Anyone visiting old links or QR codes will see a friendly "File Expired" notice.'
   },
   {
-    q: 'How does the Steganography Vault hide files in photos?',
-    a: 'It embeds the encrypted file into the microscopic color bits of a PNG carrier image. The photo displays normally in any image viewer, but contains your hidden, password-protected file payload inside.'
+    q: 'Where is my data stored, and can anyone see it?',
+    a: 'Your files are stored only as temporary encrypted blobs on the server until downloaded or expired. They are never stored in plaintext and never shared with advertisers or third parties. No accounts or personal information are ever requested or stored.'
   },
   {
-    q: 'Do I need to create an account or install any software?',
-    a: 'No. FileShare runs entirely in standard web browsers across desktop and mobile devices. No registration, account creation, or software installation is required.'
+    q: 'Do I need to install an app or register an account?',
+    a: 'No. FileShare works entirely inside standard mobile and desktop web browsers (Safari, Chrome, Firefox, Edge). There is zero registration, zero app installation, and zero tracking.'
   },
   {
-    q: 'Can the server owner or internet provider read my files?',
-    a: 'No. Because encryption occurs client-side in your browser before data transmission, neither server operators, hosting providers, nor network intermediaries have access to your plaintext files or keys.'
+    q: 'What is the difference between Cloud Encrypted and WebRTC Direct P2P?',
+    a: 'Cloud Encrypted allows you to upload and close your browser; the recipient can download whenever convenient. WebRTC Direct P2P streams data straight from your device to the recipient’s device in real-time with zero server storage, perfect for huge files.'
   }
 ];

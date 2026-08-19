@@ -1,6 +1,6 @@
 /**
  * SecureShare Transfer Code Parser & Generator
- * Manages creation and parsing of FS- and SEC- transfer codes, URL fragments, and sharing messages.
+ * Manages creation and parsing of 10-digit transfer codes, URL fragments, and sharing messages.
  */
 
 /**
@@ -23,8 +23,9 @@ export function extractKeyFromUrl() {
 }
 
 /**
- * Create a clean, readable Transfer Code
- * Format: FS-<FILE_ID>-<KEY> (e.g. FS-4BE819D7-9F8A73C2)
+ * Create a clean, readable 10-digit Transfer Code
+ * Format: FS-<5-char ID>-<5-char Key> (e.g. FS-4BE81-9F8A7 or FS-12345-67890)
+ * Total code payload is exactly 10 digits (formatted as 5-5 for ease of typing).
  */
 export function createTransferCode(fileId, password) {
   const f = (fileId || '').toUpperCase();
@@ -33,7 +34,7 @@ export function createTransferCode(fileId, password) {
 }
 
 /**
- * Parse Transfer Code or flexible input formats (URL, FS-code, SEC-code, 16-char hex) into fileId and key
+ * Parse 10-digit Transfer Code or flexible input formats (URL, FS-code, SEC-code, 10-digit, 16-char hex) into fileId and key
  */
 export function parseTransferCode(input) {
   if (!input) return { fileId: null, key: null, valid: false };
@@ -67,20 +68,32 @@ export function parseTransferCode(input) {
     } catch (_) {}
   }
 
-  // Handle explicit prefixes: FS-, SEC-, FILE-
+  // Handle explicit prefixes: FS-, FS:, SEC-, SEC:, FILE-, FILE:
   const upper = str.toUpperCase();
   for (const prefix of ['FS-', 'FS:', 'SEC-', 'SEC:', 'FILE-', 'FILE:']) {
     if (upper.startsWith(prefix)) {
-      const parts = str.slice(prefix.length).split(/[-:]/);
+      const remainder = str.slice(prefix.length).trim();
+      const parts = remainder.split(/[-:]/);
       if (parts.length >= 2) {
         return result(parts[0].toLowerCase(), parts.slice(1).join('-').toLowerCase(), true);
       } else if (parts.length === 1 && parts[0]) {
+        // Handle raw 10-digit / 16-hex code with prefix (e.g. FS-4BE819F8A7)
+        const cleanedRemainder = parts[0].replace(/[\s-]/g, '').toLowerCase();
+        if (/^[0-9a-f]+$/.test(cleanedRemainder)) {
+          if (cleanedRemainder.length === 10) {
+            return result(cleanedRemainder.slice(0, 5), cleanedRemainder.slice(5), true);
+          } else if (cleanedRemainder.length === 16) {
+            return result(cleanedRemainder.slice(0, 8), cleanedRemainder.slice(8), true);
+          } else if (cleanedRemainder.length >= 32) {
+            return result(cleanedRemainder.slice(0, 16), cleanedRemainder.slice(16), true);
+          }
+        }
         return result(parts[0].toLowerCase(), null, true);
       }
     }
   }
 
-  // Handle hyphenated format without prefix (e.g. 4BE819D7-9F8A73C2)
+  // Handle hyphenated format without prefix (e.g. 4BE81-9F8A7 or 12345-67890 or 4BE819D7-9F8A73C2)
   if (str.includes('-') || str.includes(':')) {
     const parts = str.split(/[-:]/).filter(Boolean);
     if (parts.length >= 2) {
@@ -88,14 +101,29 @@ export function parseTransferCode(input) {
     }
   }
 
-  // Handle raw combined hex: 16+16 (current) or legacy 8+8
+  // Handle raw combined digits / hex (no hyphens)
   const cleaned = str.replace(/[\s-]/g, '').toLowerCase();
-  if (/^[0-9a-f]+$/.test(cleaned) && cleaned.length >= 32) {
-    return result(cleaned.slice(0, 16), cleaned.slice(16), true);
-  } else if (/^[0-9a-f]+$/.test(cleaned) && cleaned.length >= 16) {
-    return result(cleaned.slice(0, 8), cleaned.slice(8) || null, true);
-  } else if (cleaned.length >= 8) {
-    return result(cleaned.slice(0, 8), cleaned.slice(8) || null, Boolean(cleaned));
+  if (/^[0-9a-f]+$/.test(cleaned)) {
+    // 10-digit transfer code (5 file ID + 5 key)
+    if (cleaned.length === 10) {
+      return result(cleaned.slice(0, 5), cleaned.slice(5), true);
+    }
+    // 16-hex legacy code (8 file ID + 8 key)
+    if (cleaned.length === 16) {
+      return result(cleaned.slice(0, 8), cleaned.slice(8), true);
+    }
+    // 32-hex legacy code (16 file ID + 16 key)
+    if (cleaned.length >= 32) {
+      return result(cleaned.slice(0, 16), cleaned.slice(16), true);
+    }
+    // 5-digit raw file ID
+    if (cleaned.length === 5) {
+      return result(cleaned, null, true);
+    }
+    // 8-digit raw file ID
+    if (cleaned.length >= 8) {
+      return result(cleaned.slice(0, 8), cleaned.slice(8) || null, Boolean(cleaned));
+    }
   }
 
   return result(str.toLowerCase() || null, null, Boolean(str));
@@ -107,7 +135,7 @@ export function parseTransferCode(input) {
 export function isValidTransferCodeInput(input) {
   const parsed = parseTransferCode(input);
   if (!parsed.valid || !parsed.fileId) return false;
-  return /^[0-9a-f]{8,32}$/.test(parsed.fileId);
+  return /^[0-9a-fA-F]{4,32}$/.test(parsed.fileId);
 }
 
 /**
@@ -130,4 +158,3 @@ export function createShareMessage({ transferCode, shareUrl, expiryHours, fileCo
   }
   return parts.join('\n');
 }
-

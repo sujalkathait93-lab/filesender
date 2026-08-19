@@ -12,8 +12,8 @@ import re
 from api.config import MAX_FILE_SIZE
 from api.errors import ValidationError
 
-# 8-32 hex chars (legacy 8-char IDs plus current 16-char IDs)
-HEX_ID_RE = re.compile(r"^[0-9a-fA-F]{8,32}$")
+# 4-32 hex chars (supports 5-char 10-digit transfer codes, 8-char legacy, 10-char, 16-char, 32-char)
+HEX_ID_RE = re.compile(r"^[0-9a-fA-F]{4,32}$")
 HEX_STR_RE = re.compile(r"^[0-9a-fA-F]+$")
 IV_HEX_LEN = 24   # 12 bytes
 SALT_HEX_LEN = 32  # 16 bytes
@@ -25,7 +25,7 @@ SHARING_MODES = frozenset({"standard", "steganography", "burn_on_read", "both"})
 
 
 def validate_file_id(file_id: str) -> str:
-    """File IDs must be hex, 8-32 chars. Normalizes to lowercase."""
+    """File IDs must be hex, 4-32 chars. Normalizes to lowercase."""
     if not file_id or not HEX_ID_RE.match(file_id):
         raise ValidationError("Invalid file ID format")
     return file_id.lower()
@@ -74,14 +74,21 @@ def validate_upload_form(form: dict) -> dict:
     if access_hash and (not HEX_STR_RE.match(access_hash) or len(access_hash) != 64):
         raise ValidationError("access_hash must be a 64-character hex SHA-256 digest")
 
+    burn_on_read = _to_int(form.get("burn_on_read"), 0, 0, 1, "burn_on_read")
+    raw_max = form.get("max_downloads")
+    default_max = 1 if burn_on_read else 10
+    max_downloads = _to_int(raw_max, default_max, 0, 100, "max_downloads")
+    if burn_on_read and (raw_max is None or raw_max == "" or raw_max == "10"):
+        max_downloads = 1
+
     return {
         "iv": iv.lower(),
         "salt": salt.lower(),
         "original_name": original_name,
         "original_size": original_size,
         "compressed": _to_int(form.get("compressed"), 1, 0, 1, "compressed"),
-        "max_downloads": _to_int(form.get("max_downloads"), 10, 0, 100, "max_downloads"),
-        "burn_on_read": _to_int(form.get("burn_on_read"), 0, 0, 1, "burn_on_read"),
+        "max_downloads": max_downloads,
+        "burn_on_read": burn_on_read,
         "expiry_hours": _to_float(
             form.get("expiry_hours"), 1.0, MIN_EXPIRY_HOURS, MAX_EXPIRY_HOURS, "expiry_hours"
         ),

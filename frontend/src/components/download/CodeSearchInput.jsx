@@ -1,15 +1,16 @@
 import React from 'react';
-import { Copy, Key, Loader2 } from 'lucide-react';
+import { Copy, Key, Loader2, QrCode } from 'lucide-react';
 
 /**
  * CodeSearchInput Component
- * Primary Responsibility: Handle user input for transfer codes, clipboard paste action, and connect submit trigger.
+ * Primary Responsibility: Handle user input for 10-digit transfer codes, clipboard paste, camera QR scan trigger, and connect submit.
  */
 export function CodeSearchInput({
   codeInput,
   onChangeCodeInput,
   onSearchCode,
   onPasteClipboard,
+  onOpenQRScanner,
   isLoading,
   isDecrypting
 }) {
@@ -17,7 +18,7 @@ export function CodeSearchInput({
     <div className="download-input" role="search">
       <input
         type="text"
-        placeholder="Paste transfer code (e.g. FS-A1B2C3D4E5F60708-9F8A73C21D2E3F40)"
+        placeholder="Enter 10-Digit Transfer Code (e.g. FS-48A19-9F7C2 or 48A19-9F7C2)"
         value={codeInput}
         onChange={(e) => onChangeCodeInput(e.target.value.replace(/[^a-zA-Z0-9\-:_/?.#=&]/g, ''))}
         onKeyDown={(e) => e.key === 'Enter' && onSearchCode()}
@@ -30,22 +31,38 @@ export function CodeSearchInput({
         data-form-type="other"
         maxLength={128}
         disabled={isLoading || isDecrypting}
-        aria-label="Transfer Code"
+        aria-label="Enter 10-Digit Transfer Code or URL"
       />
       <div className="download-input-actions">
+        {onOpenQRScanner && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenQRScanner}
+            title="Scan QR code with camera"
+            disabled={isLoading || isDecrypting}
+            aria-label="Scan QR code"
+          >
+            <QrCode size={14} /> Scan QR
+          </button>
+        )}
         <button
+          type="button"
           className="btn btn-secondary btn-sm"
           onClick={onPasteClipboard}
-          title="Paste from clipboard"
+          title="Paste transfer code from clipboard"
           disabled={isLoading || isDecrypting}
+          aria-label="Paste from clipboard"
         >
           <Copy size={14} /> Paste
         </button>
         <button
+          type="button"
           className="btn btn-primary btn-sm"
           onClick={() => onSearchCode()}
           disabled={isLoading || isDecrypting || !codeInput.trim()}
           aria-busy={isLoading}
+          aria-label="Connect and receive files"
         >
           {isLoading ? (
             <>
