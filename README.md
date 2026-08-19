@@ -1,14 +1,15 @@
 <div align="center">
 
-# FileShare
+# 🔒 FileShare
 
-### High-Performance, Zero-Knowledge Encrypted File Transfer with Stream and Batch Processing
+### High-Performance, Zero-Knowledge Encrypted File Transfer with Stream & Batch Processing
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.0.2-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Web Crypto](https://img.shields.io/badge/Web_Crypto_API-AES--256--GCM-4CAF50?style=for-the-badge)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
+[![WebRTC](https://img.shields.io/badge/WebRTC-P2P_Direct-FF5722?style=for-the-badge&logo=webrtc&logoColor=white)](https://webrtc.org/)
 [![Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/)
 
 **Live Application:** https://filesender-coral.vercel.app/  
@@ -18,201 +19,209 @@
 
 </div>
 
-## Overview
+## 📌 Overview
 
-FileShare is a high-performance, privacy-first web application designed for secure, zero-knowledge file sharing. It implements a stream and batch processing architecture that enables users to transfer large files without buffering them completely in system memory.
+**FileShare** is a high-performance, privacy-first web application designed for secure, zero-knowledge file sharing. Built with a stream-and-batch processing pipeline, it allows users to transfer files up to 1 GB safely without loading entire files into memory.
 
-Files are encrypted directly in the browser using hardware-accelerated **AES-256-GCM** before any byte is transmitted. The backend server acts strictly as a lightweight signaling gateway and metadata coordinator, storing only ephemeral session records in SQLite and never storing or inspecting plaintext files.
-
----
-
-## Core Architecture and Features
-
-### 1. Stream and Batch Processing Pipeline
-- **Memory-Safe File Slicing:** Slices large files from disk using `File.slice()` in discrete 256 KB chunks (262,144 bytes), preventing browser and server RAM exhaustion.
-- **Batch Grouping:** Automatically groups 8 consecutive chunks into 2 MB batches prior to encryption and network dispatch.
-- **Per-Batch AES-256-GCM Encryption:** Encrypts each 2 MB batch independently using counter-derived initialization vectors (IVs), ensuring both confidentiality and cryptographic integrity.
-- **Direct-to-Disk Streaming:** Receivers stream and write decrypted batches directly to disk using the browser-native File System Access API (`showSaveFilePicker` and `createWritable`), eliminating memory overhead on the receiving client.
-
-### 2. Zero-Knowledge Cryptography
-- **Client-Side Key Generation:** Generates high-entropy 256-bit keys and random 16-byte salts in the browser using the Web Crypto API.
-- **Key Derivation (PBKDF2):** Derives encryption keys using PBKDF2 with SHA-256 and 100,000 iterations.
-- **URL Fragment Isolation:** Appends the decryption key exclusively to the URL fragment (`#key=...`). The key is never transmitted over HTTP headers or stored on the server.
-- **Access Proof Protocol:** Verifies download authorization using a SHA-256 hash digest (`fileshare-access:<password>`), authenticating requests without revealing the decryption key.
-
-### 3. Reliability, Retries, and Integrity
-- **Real-Time Flow Control:** WebRTC DataChannels utilize buffered amount backpressure monitoring (`bufferedAmountLowThreshold`) to prevent packet congestion.
-- **Automatic Retry Mechanism:** Implements a NACK protocol over the DataChannel, enabling the receiver to detect missing chunks/batches and request immediate retransmission.
-- **Pause, Resume, and Cancellation:** Both sender and receiver can pause, resume, or abort active transfers on demand with graceful resource cleanup.
-- **End-to-End SHA-256 Verification:** Calculates pre-encryption and post-decryption SHA-256 hashes to guarantee byte-for-byte file integrity.
-
-### 4. Privacy and Storage Rules
-- **Metadata-Only SQLite Storage:** The SQLite database stores only transfer identifiers, chunk counts, byte sizes, checksums, and expiry timestamps. Plaintext files never touch server storage.
-- **Burn-on-Read:** Transfers configured with Burn-on-Read are automatically and permanently purged from server memory and disk immediately after the first successful download.
-- **Steganography Vault:** Supports embedding encrypted payloads into the Least Significant Bits (LSB) of PNG pixel arrays, providing plausible deniability.
+Files are encrypted directly in the user's browser using hardware-accelerated **AES-256-GCM** before transmission. The backend server functions strictly as an ephemeral metadata coordinator and optional fallback relay—**decryption keys and plaintext files never touch the server disk or memory**.
 
 ---
 
-## System Architecture
+## ✨ Key Capabilities & Features
+
+### 1. ⏱️ Ephemeral Expiry Countdown (15s up to 3 Minutes)
+- **Strict Ephemeral Window:** Configurable live countdown options (**15s, 30s, 45s, 60s, 2 min, up to 3 min / 180s**).
+- **Sub-Second Auto-Purge:** The moment the countdown timer expires, backend background cleanup sweeps immediately unlink the ciphertext file and purge SQLite metadata.
+- **Visual Countdown:** Live countdown timers with warning pulses and automatic recipient notice.
+
+### 2. 🔢 10-Digit Transfer Codes (`FS-XXXXX-XXXXX`)
+- **Seamless Code Format:** 5-character file ID + 5-character decryption key combined into a standard 10-digit/char code (e.g., `FS-4BE81-9F8A7`).
+- **Flexible Code Parsing:** Seamlessly accepts `FS-XXXXX-XXXXX`, `XXXXX-XXXXX`, raw 10-hex strings (`4BE819F8A7`), numeric strings, or direct URL hash links (`#key=...`).
+
+### 3. 📊 Sender Dashboard (Exactly 7 Organized Boxes)
+The sender screen features an organized 7-box telemetry layout:
+1. **File Preview Box:** Instant image thumbnail / file category icon, total size, file count, and modal inspection.
+2. **Transfer Code Box:** Prominent 10-digit code with one-click copy and instant confirmation.
+3. **QR Code Box:** Scannable SVG QR code with dynamic token rotation (`0/5`), WhatsApp share, and share message generator.
+4. **Expiry Time Box:** Real-time countdown timer in seconds with animated progress track.
+5. **Download Count Box:** Downloads used vs maximum allowed (`0 / 10 used`), remaining quota, and Burn-on-Read badge.
+6. **Active Users Box:** Live WebRTC signaling status (`0 Active Downloaders` / `1 Connected Peer`).
+7. **Transfer Status Box:** Zero-Knowledge AES-256 verification seal and device-only key assurance.
+
+### 4. 🗂️ Sender Transfer History & Instant Cancellation
+- **Active Share Monitoring:** Track multiple active transfers simultaneously with live countdowns and remaining download quotas.
+- **Instant Revocation:** Senders can cancel and purge files immediately via `DELETE /api/cancel/<id>` with secret `X-Owner-Token` authentication.
+
+### 5. 📥 Receiver Experience & In-Browser Preview
+- **Pre-Download Inspection:** Inspect photos, audio, video, PDFs, code, and text directly in-browser before saving to disk.
+- **Verification Telemetry:** Displays transfer size, download policy, countdown timer, and cryptographic security badges.
+- **Burn-on-Read Self-Destruction:** Files marked with Burn-on-Read automatically self-destruct after 1 complete download.
+
+### 6. 🌐 Multiple Transfer Modes
+- **Cloud Encrypted Relay:** AES-256-GCM ciphertext stored temporarily until download limit or expiry timer is reached.
+- **WebRTC Direct P2P:** Direct browser-to-browser streaming via DataChannels with **zero intermediary server storage**.
+- **Steganography Image Vault:** Inconspicuously conceals encrypted bytes inside standard PNG pixel arrays.
+
+### 7. 🧹 Zero Tracking & One-Click Privacy Purge
+- **No Tracking Cookies:** Zero persistent tracking cookies or user accounts required.
+- **Session Data Purge:** Dedicated Settings & Privacy tool to wipe all session tokens, cookie records, blob memory URLs, and transfer histories in one click.
+
+---
+
+## 🏛️ System Architecture
 
 ```mermaid
 graph TD
-    subgraph SENDER ["Sender Browser"]
+    subgraph SENDER ["Sender Client (Browser)"]
         S1[Disk File] -->|File.slice| S2[256 KB Chunks]
         S2 -->|Group 8 Chunks| S3[2 MB Batches]
-        S3 -->|AES-256-GCM| S4[Encrypted Batches]
-        S4 -->|DataChannel Flow Control| S5[WebRTC DataChannel]
+        S3 -->|AES-256-GCM + PBKDF2| S4[Encrypted Payload]
+        S4 -->|Direct P2P DataChannel| W1[WebRTC Channel]
+        S4 -->|Fallback Stream Upload| B1[Flask Backend]
     end
 
-    subgraph BACKEND ["Backend Signaling & Metadata"]
-        B1[Flask REST API] --> B2[SQLite WAL Database]
-        B3[Socket.IO Signaling Server] -.->|SDP / ICE Exchange| S5
-        B2 ---|Stores Only Transfer Metadata| B4[(Metadata Only)]
+    subgraph BACKEND ["Backend (Signaling & Ephemeral Coordinator)"]
+        B1 --> B2[SQLite WAL Database]
+        B1 --> B3[Ephemeral Storage /uploads]
+        B4[Background Cleanup Worker] -->|Sweeps Expiry <= 180s| B2
+        B4 -->|Unlinks Expired Files| B3
     end
 
-    subgraph RECEIVER ["Receiver Browser"]
-        S5 -->|Stream Ingest| R1[Batch Collector]
-        R1 -->|NACK / Retry Check| R2[Checksum Validator]
-        R2 -->|AES-256-GCM Decrypt| R3[Decrypted Batch]
-        R3 -->|File System Access API| R4[Direct Disk Stream]
-        R4 -->|Final Check| R5[SHA-256 Verification]
+    subgraph RECEIVER ["Receiver Client (Browser)"]
+        W1 --> R1[Decryption Engine]
+        B1 -->|Stream Download| R1
+        R1 -->|AES-256-GCM Decrypt| R2[File Stream]
+        R2 -->|File System Access API| R3[Direct-to-Disk Save]
+        R2 -->|In-Memory Buffer| R4[In-Browser File Preview]
     end
 ```
 
 ---
 
-## Data Flow Sequences
-
-### Stream and Batch Transfer Flow
+## 🔄 Transfer Flow Sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Sender as Sender Browser
-    participant Signaling as Backend Signaling Gateway
+    participant Backend as Flask API & SQLite WAL
     actor Receiver as Receiver Browser
 
-    Note over Sender,Receiver: WebRTC P2P Handshake (SDP Offer/Answer + ICE via Socket.IO)
-    Sender->>Signaling: SDP Offer + ICE Candidates
-    Signaling->>Receiver: Relay SDP Offer
-    Receiver->>Signaling: SDP Answer + ICE Candidates
-    Signaling->>Sender: Relay SDP Answer
+    Note over Sender: Encrypts file locally (AES-256-GCM, 10-Digit Code FS-XXXXX-XXXXX)
+    Sender->>Backend: POST /api/upload (Encrypted ciphertext, max_downloads, expiry_seconds <= 180)
+    Backend-->>Sender: 200 OK (file_id, owner_token, expires_at)
 
-    Note over Sender,Receiver: Direct WebRTC DataChannel Established
+    Note over Sender,Receiver: Sender shares 10-digit code or QR code
+    Receiver->>Backend: GET /api/file-info/<id> (X-Access-Proof)
+    Backend-->>Receiver: Metadata (size, max_downloads, expires_at)
 
-    loop For each 2 MB Batch (8 x 256 KB Chunks)
-        Sender->>Sender: Read 256 KB chunks from disk
-        Sender->>Sender: Encrypt 2 MB batch with AES-256-GCM
-        Sender->>Receiver: Send encrypted batch packet
-        Receiver->>Receiver: Validate batch checksum
-        alt Checksum Valid
-            Receiver->>Receiver: Decrypt batch & write directly to disk
-        else Checksum Mismatch / Dropped Batch
-            Receiver->>Sender: Request batch retransmission (RETRY_BATCH)
-            Sender->>Receiver: Retransmit batch
+    alt In-Browser Preview Mode
+        Receiver->>Backend: GET /api/download/<id>?preview=1
+        Backend-->>Receiver: Stream Encrypted Bytes (Download count NOT decremented)
+        Note over Receiver: Decrypts & renders in-browser preview modal
+    else Full Download Mode
+        Receiver->>Backend: GET /api/download/<id>
+        Backend-->>Receiver: Stream Encrypted Bytes (Download count decremented)
+        Note over Receiver: Decrypts & streams directly to disk via File System API
+        opt Burn-on-Read Active or Limit Reached
+            Backend->>Backend: Unlinks ciphertext blob & marks transfer burned
         end
     end
-
-    Sender->>Receiver: Send TRANSFER_COMPLETE
-    Receiver->>Receiver: Verify final SHA-256 checksum against manifest
 ```
 
 ---
 
-## Tech Stack Breakdown
+## 🛠️ Tech Stack Breakdown
 
-### Frontend Components
-
-| Component | Technical Role |
+### Frontend
+| Technology | Role |
 | :--- | :--- |
-| **React 18** | Manages UI state, transfer progress displays, modal dialogs, and component lifecycle. |
-| **Vite 5** | Provides Hot Module Replacement (HMR) and compiles optimized production assets. |
-| **Web Crypto API** | Executes hardware-accelerated AES-256-GCM encryption and PBKDF2 key derivation. |
-| **Streams & File System API** | Facilitates progressive chunk reading and direct-to-disk write streaming without full RAM buffering. |
-| **Socket.IO Client** | Manages real-time WebRTC signaling and peer discovery. |
-| **Lucide Icons** | Vector iconography for interface actions and transfer state feedback. |
+| **React 18** | Modular UI components, state machines, and reactive telemetry cards. |
+| **Vite 5** | High-speed build tooling and optimized bundle compilation. |
+| **Web Crypto API** | Hardware-accelerated client-side AES-256-GCM encryption & PBKDF2 key derivation. |
+| **WebRTC & Socket.IO** | Peer-to-peer data channels for direct device-to-device transfers. |
+| **File System Access API** | Direct-to-disk streaming writes for high memory efficiency. |
+| **QRCode.react** | SVG-rendered dynamic QR codes with token refresh capabilities. |
+| **Lucide React** | Clean vector iconography. |
 
-### Backend Components
-
-| Component | Technical Role |
+### Backend
+| Technology | Role |
 | :--- | :--- |
-| **Python 3.12** | Core backend language providing high efficiency and modern type annotations. |
-| **Flask 3.0** | Lightweight WSGI server managing REST endpoints and fallback cloud relay routes. |
-| **Flask-SocketIO** | Handles bidirectional WebSocket signaling for WebRTC peer connection setup. |
-| **SQLite (WAL Mode)** | High-concurrency metadata repository storing session state, chunk counts, and expiry times. |
-| **Sliding Window Rate Limiter** | Enforces endpoint rate limits to protect signaling and relay routes from abuse. |
-| **Cleanup Service** | Background worker thread that sweeps and purges expired transfer records. |
+| **Python 3.12+ / Flask 3.0** | Ephemeral REST API coordinator and chunk streaming router. |
+| **SQLite (WAL Mode)** | High-concurrency relational metadata storage with indexed expiry sweeps. |
+| **Threaded Cleaner** | Background worker enforcing sub-second cleanup of transfers expired within 15s–180s. |
+| **Pytest** | Comprehensive integration testing covering security, TTL, and rate limits. |
 
 ---
 
-## REST API Reference
+## 🔌 REST API Reference
 
 | Method | Endpoint | Required Headers / Params | Description |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/health` | None | Reports server health and storage status. |
-| `GET` | `/api/network-info` | None | Retrieves STUN/TURN configuration for WebRTC NAT traversal. |
-| `POST` | `/api/upload` | Multipart Form | Uploads encrypted relay fallback blob and metadata. |
-| `GET` | `/api/file-info/<id>` | `X-Access-Proof` | Retrieves transfer metadata without downloading the encrypted payload. |
-| `GET` | `/api/download/<id>` | `X-Access-Proof`, `?preview=bool` | Streams encrypted binary blob (supports Burn-on-Read). |
-| `POST` | `/api/transfers/<id>/token/refresh` | None | Refreshes share tokens and enforces session limits. |
-| `DELETE` | `/api/files/<id>` | `X-Owner-Token` | Permanently deletes a transfer and its associated records. |
+| `GET` | `/api/health` | None | Reports server health, storage engine, and cleanup daemon status. |
+| `GET` | `/api/network-info` | None | Retrieves STUN configuration for WebRTC NAT traversal. |
+| `POST` | `/api/upload` | Multipart Form (`file`, `expiry_seconds`, `max_downloads`, etc.) | Uploads encrypted payload with metadata. |
+| `POST` | `/api/upload-chunk` | Multipart Form (`file_id`, `chunk_index`, `chunk_data`) | Uploads individual chunk slice for multi-part transfers. |
+| `POST` | `/api/finalize-chunked` | JSON (`file_id`, `total_chunks`, `checksum`) | Finalizes and stitches chunked transfer. |
+| `GET` | `/api/file-info/<id>` | `X-Access-Proof` | Retrieves file metadata and download policy without downloading payload. |
+| `GET` | `/api/download/<id>` | `X-Access-Proof`, optional `?preview=1` | Streams encrypted binary blob. |
+| `POST` | `/api/transfers/<id>/token/refresh` | `X-Owner-Token` | Rotates QR access token (up to 5 refreshes). |
+| `DELETE` | `/api/cancel/<id>` | `X-Owner-Token` | Senders permanently delete files and purge metadata on demand. |
 
 ---
 
-## Local Development and Setup
+## 💻 Local Development Setup
 
 ### Prerequisites
-- Python 3.12 or higher
-- Node.js 18 or higher and npm
+- **Python 3.12+**
+- **Node.js 18+** and **npm**
 
-### 1. Backend Service
-
+### 1. Backend Setup
 ```bash
-# Set up virtual environment
+# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
 
-# Install requirements
+# Install dependencies
 pip install -r requirements.txt
 
-# Start Flask API server (Port 8000)
+# Start backend API (Port 8000)
 python api/index.py
 ```
 
-### 2. Frontend Application
-
+### 2. Frontend Setup
 ```bash
-# Navigate to frontend directory
+# Navigate to frontend folder
 cd frontend
 
-# Install dependencies
+# Install packages
 npm install
 
-# Start development server (Port 5173)
+# Start Vite development server (Port 5173)
 npm run dev
 ```
 
-The web application will be accessible at `http://localhost:5173`.
+Visit application in browser at: `http://localhost:5173`
 
 ---
 
-## Verification and Testing
+## 🧪 Verification and Testing
 
-Execute the automated test suite to validate backend APIs, cryptographic functions, and state machines:
+Execute the automated test suites to validate encryption, API endpoints, state machines, and countdown TTL sweeps:
 
 ```bash
-# Run backend integration test suite (56 tests)
-python tests/test_backend.py
+# Run 59 Backend Integration Tests (Pytest)
+pytest -s
 
-# Run browser cryptographic roundtrip validation
-node tests/crypto-roundtrip.mjs
-
-# Run preview and state machine tests
+# Run Frontend Cryptographic & State Machine Tests (58 tests)
 node tests/preview-and-states.test.mjs
+
+# Build production bundle
+cd frontend && npm run build
 ```
 
+---
 
+## 📄 License
 
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+This project is open source and available under the [MIT License](LICENSE).

@@ -24,7 +24,7 @@ export const FILE_SHARING_LIFECYCLE_STEPS = [
   {
     step: 3,
     title: 'Choose Settings',
-    desc: 'Select download limits (1 to 100 or Unlimited) and code expiry (15 to 60 sec).',
+    desc: 'Select download limits (1 to 100 or Unlimited) and code expiry (15s up to 3 min).',
     detail: 'Optionally enable Burn After Read, Steganography Vault, or Direct P2P.'
   },
   {
@@ -170,20 +170,20 @@ export const FEATURE_EXPLANATIONS = [
     id: 'auto_expiry',
     icon: Clock,
     title: 'Code Expiry & Countdown (TTL)',
-    badge: '15 to 60 SECONDS',
+    badge: '15s to 3 MINUTES',
     badgeColor: 'badge-amber',
-    whatIsIt: 'Configurable live countdown timer (15, 30, 45, or 60 seconds) that automatically deletes files when time runs out.',
-    whyUseIt: 'Guarantees ephemeral zero-knowledge privacy with instant automatic deletion.',
+    whatIsIt: 'Configurable live countdown timer (15s, 30s, 45s, 60s, 2 min, up to 3 minutes) that automatically deletes files when time runs out.',
+    whyUseIt: 'Guarantees ephemeral zero-knowledge privacy with instant sub-second automatic deletion.',
     howToUse: [
-      'Select Expiry Countdown on the Upload page: 15s, 30s, 45s, or 60s.',
+      'Select Expiry Countdown on the Upload page: 15s, 30s, 45s, 60s, 2m, or 3m.',
       'The countdown begins as soon as the transfer is created.',
       'When the timer reaches zero, all server ciphertext and sessions are immediately purged.'
     ],
     whatHappensNext: 'Once expired, attempting to use the link or code displays a clear "File Expired — Time limit reached" explanation.',
-    important: 'Maximum expiry duration is 60 seconds for strict ephemeral file transfer security.',
+    important: 'Maximum expiry duration is 3 minutes (180 seconds) for strict ephemeral file transfer security.',
     whereStored: 'Expiry timestamp stored in database index for sub-millisecond automated cleanup.',
     whenDeleted: 'Purged immediately upon reaching the exact expiry timestamp.',
-    example: 'Setting a 30-second expiry for a one-time passcode or private document shared with a recipient.'
+    example: 'Setting a 30-second expiry for a one-time passcode or 3-minute expiry for a large document shared with a recipient.'
   },
   {
     id: 'previews_and_bundles',

@@ -208,7 +208,7 @@ export function VaultSettings({
         </select>
       </div>
 
-      {/* Expiry Countdown selection (15, 30, 45, 60 seconds) */}
+      {/* Expiry Countdown selection (15s up to 3 min / 180s) */}
       <div className="expiry-row">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Clock size={16} className="field-icon" />
@@ -219,12 +219,14 @@ export function VaultSettings({
           value={expiryHours}
           disabled={isTransferring}
           onChange={(e) => setExpiryHours(Number(e.target.value))}
-          aria-label="Select code expiration time in seconds"
+          aria-label="Select code expiration time"
         >
           <option value={15}>15 seconds</option>
           <option value={30}>30 seconds</option>
           <option value={45}>45 seconds</option>
-          <option value={60}>60 seconds (Standard)</option>
+          <option value={60}>60 seconds (1 min)</option>
+          <option value={120}>2 minutes (120s)</option>
+          <option value={180}>3 minutes (Max - 180s)</option>
         </select>
       </div>
     </div>
