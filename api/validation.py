@@ -19,7 +19,7 @@ IV_HEX_LEN = 24   # 12 bytes
 SALT_HEX_LEN = 32  # 16 bytes
 
 MAX_EXPIRY_HOURS = 1.0  # 60 minutes maximum
-MIN_EXPIRY_HOURS = 0.25  # 15 minutes minimum
+MIN_EXPIRY_HOURS = 0.0027  # 10 seconds minimum (supports countdown timer down to 10s)
 
 SHARING_MODES = frozenset({"standard", "steganography", "burn_on_read", "both"})
 

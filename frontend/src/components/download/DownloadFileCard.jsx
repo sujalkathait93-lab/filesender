@@ -35,14 +35,19 @@ export function DownloadFileCard({
 
   if (!fileInfo) return null;
 
-  const isBurn = Boolean(fileInfo.burn_on_read) || fileInfo.max_downloads === 1;
-  const remainingDownloads = fileInfo.downloads_remaining !== undefined && fileInfo.downloads_remaining !== null
+  const isBurn = Boolean(fileInfo.burnOnRead ?? fileInfo.burn_on_read) || fileInfo.maxDownloads === 1 || fileInfo.max_downloads === 1;
+  const maxDownloads = Number(fileInfo.maxDownloads ?? fileInfo.max_downloads ?? 10);
+  const downloadCount = Number(fileInfo.downloadCount ?? fileInfo.download_count ?? 0);
+  const remainingDownloads = fileInfo.downloadsRemaining !== undefined && fileInfo.downloadsRemaining !== null
+    ? fileInfo.downloadsRemaining
+    : fileInfo.downloads_remaining !== undefined && fileInfo.downloads_remaining !== null
     ? fileInfo.downloads_remaining
-    : fileInfo.max_downloads > 0
-    ? Math.max(0, fileInfo.max_downloads - fileInfo.download_count)
+    : maxDownloads > 0
+    ? Math.max(0, maxDownloads - downloadCount)
     : null;
 
-  const expiresTimestamp = fileInfo.expires_at ? new Date(fileInfo.expires_at).getTime() : 0;
+  const expiresAtVal = fileInfo.expiresAt || fileInfo.expires_at;
+  const expiresTimestamp = expiresAtVal ? new Date(expiresAtVal).getTime() : 0;
   const remainingMillis = Math.max(0, expiresTimestamp - now);
   const totalSeconds = Math.floor(remainingMillis / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -53,10 +58,10 @@ export function DownloadFileCard({
     if (isBurn) {
       return '1 download remaining (Burn After Read)';
     }
-    if (fileInfo.max_downloads === 0) {
+    if (maxDownloads === 0) {
       return 'Unlimited downloads until expiry';
     }
-    return `${fileInfo.download_count} of ${fileInfo.max_downloads} used (${remainingDownloads} remaining)`;
+    return `${downloadCount} of ${maxDownloads} used (${remainingDownloads} remaining)`;
   };
 
   return (

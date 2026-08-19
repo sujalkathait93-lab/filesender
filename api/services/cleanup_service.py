@@ -14,7 +14,7 @@ import time
 from api.config import ORPHAN_GRACE_PERIOD_SECONDS
 from api.database import DatabaseManager
 from api.storage import StorageManager
-from api.utils import get_utc_now_iso
+from api.utils import get_utc_now_iso, is_expired
 
 
 class CleanupService:
@@ -32,8 +32,8 @@ class CleanupService:
             now_iso = get_utc_now_iso()
 
             # 1. Expired files: collect IDs, delete blobs, then bulk-delete rows
-            cursor = conn.execute("SELECT id FROM files WHERE expires_at < ?", (now_iso,))
-            expired_ids = [row["id"] for row in cursor.fetchall()]
+            cursor = conn.execute("SELECT id, expires_at FROM files")
+            expired_ids = [row["id"] for row in cursor.fetchall() if is_expired(row["expires_at"])]
 
             for file_id in expired_ids:
                 self.storage.delete_file(file_id)
@@ -43,8 +43,8 @@ class CleanupService:
                 conn.execute(f"DELETE FROM files WHERE id IN ({placeholders})", expired_ids)
 
             # 2. Expired transfers: purge their chunk dirs, then bulk-delete rows
-            t_cursor = conn.execute("SELECT id FROM transfers WHERE expires_at < ?", (now_iso,))
-            expired_transfer_ids = [row["id"] for row in t_cursor.fetchall()]
+            t_cursor = conn.execute("SELECT id, expires_at FROM transfers")
+            expired_transfer_ids = [row["id"] for row in t_cursor.fetchall() if is_expired(row["expires_at"])]
 
             for transfer_id in expired_transfer_ids:
                 self.storage.purge_transfer_chunks(transfer_id)

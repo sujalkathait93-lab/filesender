@@ -5,7 +5,9 @@ import {
 } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 import { copyToClipboard } from '../../utils/clipboard';
-import { createShareMessage } from '../../crypto';
+import { createShareMessage, parseTransferCode, computeAccessProof } from '../../crypto';
+import { api } from '../../services/api';
+import { updateTransferInHistory } from '../../services/transferHistory';
 import { FileCategoryIcon } from '../common/FileCategoryIcon';
 
 /**
@@ -32,26 +34,69 @@ export function ShareResultCard({
 }) {
   const [now, setNow] = useState(Date.now());
   const [copiedShareMsg, setCopiedShareMsg] = useState(false);
+  const [liveInfo, setLiveInfo] = useState(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!result?.fileId || !result?.transferCode) return;
+    const parsed = parseTransferCode(result.transferCode);
+    if (!parsed.key) return;
+
+    let mounted = true;
+    const updateStats = async () => {
+      try {
+        const proof = await computeAccessProof(parsed.key);
+        const data = await api.fileInfo(result.fileId, proof);
+        if (mounted && data) {
+          setLiveInfo(data);
+          updateTransferInHistory(result.fileId, {
+            downloadCount: data.download_count ?? data.downloadCount ?? 0,
+            downloadsRemaining: data.downloads_remaining ?? data.downloadsRemaining,
+            status: data.status || 'active'
+          });
+        }
+      } catch (err) {
+        if (mounted && (err.status === 410 || (err.message && (err.message.includes('expired') || err.message.includes('limit') || err.message.includes('burned'))))) {
+          updateTransferInHistory(result.fileId, {
+            status: 'expired'
+          });
+        }
+      }
+    };
+
+    updateStats();
+    const interval = setInterval(updateStats, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [result?.fileId, result?.transferCode]);
+
   if (!result) return null;
 
-  const isBurn = Boolean(result.burnOnRead) || result.maxDownloads === 1;
-  const expiresTimestamp = result.expiresAt ? new Date(result.expiresAt).getTime() : 0;
+  const isBurn = Boolean(result.burnOnRead ?? result.burn_on_read) || result.maxDownloads === 1;
+  const expiresAtVal = liveInfo?.expires_at || liveInfo?.expiresAt || result.expiresAt || result.expires_at;
+  const expiresTimestamp = expiresAtVal ? new Date(expiresAtVal).getTime() : 0;
   const remainingMillis = Math.max(0, expiresTimestamp - now);
   const totalSeconds = Math.floor(remainingMillis / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   const isExpired = remainingMillis <= 0;
 
-  const downloadsUsed = result.downloadCount || 0;
-  const maxDownloads = result.maxDownloads;
-  const remainingDownloads = result.downloadsRemaining !== undefined
+  const downloadsUsed = liveInfo?.download_count ?? liveInfo?.downloadCount ?? result.downloadCount ?? result.download_count ?? 0;
+  const maxDownloads = liveInfo?.max_downloads ?? liveInfo?.maxDownloads ?? result.maxDownloads ?? result.max_downloads ?? 10;
+  const remainingDownloads = liveInfo?.downloads_remaining !== undefined && liveInfo?.downloads_remaining !== null
+    ? liveInfo.downloads_remaining
+    : liveInfo?.downloadsRemaining !== undefined && liveInfo?.downloadsRemaining !== null
+    ? liveInfo.downloadsRemaining
+    : result.downloadsRemaining !== undefined && result.downloadsRemaining !== null
     ? result.downloadsRemaining
+    : result.downloads_remaining !== undefined && result.downloads_remaining !== null
+    ? result.downloads_remaining
     : maxDownloads > 0
     ? Math.max(0, maxDownloads - downloadsUsed)
     : null;

@@ -173,17 +173,31 @@ export function useEncryptAndSend(stateMachine) {
       throttle.push(updateProgressWithMetrics('complete', 100, totalSelectedSize));
       throttle.flush();
 
+      const createdAt = data.createdAt || data.created_at || new Date().toISOString();
+      const expiresAt = data.expiresAt || data.expires_at;
+      const downloadCount = Number(data.downloadCount ?? data.download_count ?? 0);
+      const downloadsRemaining = data.downloadsRemaining !== undefined && data.downloadsRemaining !== null
+        ? data.downloadsRemaining
+        : data.downloads_remaining !== undefined && data.downloads_remaining !== null
+        ? data.downloads_remaining
+        : effectiveMaxDownloads > 0
+        ? Math.max(0, effectiveMaxDownloads - downloadCount)
+        : null;
+
       const resultPayload = {
         fileId: data.file_id,
         transferId: data.transfer_id || data.file_id,
         transferCode,
-        expiresAt: data.expires_at,
+        createdAt,
+        expiresAt,
         originalSize: totalSelectedSize,
         fileCount: files.length,
         isBundle: packaged.isBundle,
         fileList: packaged.fileList,
         isBurn: burnOnRead,
         maxDownloads: effectiveMaxDownloads,
+        downloadCount,
+        downloadsRemaining,
         expiryHours,
         ownerToken: data.owner_token || null,
         smartOptimization: primarySmart || smartAnalysis,
@@ -199,8 +213,11 @@ export function useEncryptAndSend(stateMachine) {
         fileName: packaged.name,
         fileSize: totalSelectedSize,
         fileCount: files.length,
-        expiresAt: data.expires_at,
+        createdAt,
+        expiresAt,
         maxDownloads: effectiveMaxDownloads,
+        downloadCount,
+        downloadsRemaining,
         burnOnRead,
         ownerToken: data.owner_token || null
       });

@@ -20,6 +20,8 @@ from api.network import get_local_ips
 __all__ = [
     "get_utc_now",
     "get_utc_now_iso",
+    "parse_iso_datetime",
+    "is_expired",
     "safe_int",
     "safe_float",
     "generate_id",
@@ -42,6 +44,35 @@ def get_utc_now() -> datetime:
 def get_utc_now_iso() -> str:
     """Return timezone-aware UTC datetime formatted as ISO 8601 string."""
     return get_utc_now().isoformat()
+
+
+def parse_iso_datetime(dt_val) -> datetime | None:
+    """Safely parse a datetime object or ISO 8601 string into a timezone-aware UTC datetime."""
+    if not dt_val:
+        return None
+    if isinstance(dt_val, datetime):
+        return dt_val if dt_val.tzinfo else dt_val.replace(tzinfo=timezone.utc)
+    if isinstance(dt_val, str):
+        try:
+            clean_str = dt_val.strip().replace(" ", "T")
+            if clean_str.endswith("Z"):
+                clean_str = clean_str[:-1] + "+00:00"
+            dt = datetime.fromisoformat(clean_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            return None
+    return None
+
+
+def is_expired(expires_at) -> bool:
+    """Return True if the given expiry timestamp has passed in UTC."""
+    dt = parse_iso_datetime(expires_at)
+    if not dt:
+        return False
+    return dt <= get_utc_now()
+
 
 
 # ─── Safe Type Coercion ─────────────────────────────────────────────────────

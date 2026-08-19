@@ -16,7 +16,7 @@ from datetime import timedelta
 from api.database import DatabaseManager
 from api.storage import StorageManager
 from api.config import MAX_FILE_SIZE, MAX_REFRESHES_PER_SESSION, MAX_PREVIEWS_PER_FILE
-from api.utils import generate_id, generate_owner_token, hash_token, tokens_match, proofs_match, get_utc_now
+from api.utils import generate_id, generate_owner_token, hash_token, tokens_match, proofs_match, get_utc_now, get_utc_now_iso, is_expired
 from api.errors import NotFoundError, GoneError, ConflictError, ForbiddenError, ValidationError
 
 MAX_ALLOWED_ENCRYPTED = MAX_FILE_SIZE + 64 * 1024 * 1024  # 1 GB + overhead
@@ -68,26 +68,29 @@ class TransferService:
             self.storage.delete_file(file_id)
             raise
 
-        expires_at = get_utc_now() + timedelta(seconds=form_data["expiry_seconds"])
+        now_utc = get_utc_now()
+        created_at_iso = now_utc.isoformat()
+        expires_at = now_utc + timedelta(seconds=form_data["expiry_seconds"])
+        expires_at_iso = expires_at.isoformat()
         effective_max_downloads = max_downloads
 
         conn = self.db.get_connection()
         try:
             # Create transfer record (UPSERT so multi-file transfers accumulate)
             conn.execute("""
-                INSERT INTO transfers (id, token_hash, status, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
-                VALUES (?, ?, 'active', ?, ?, 1, ?, 0, 5, ?)
+                INSERT INTO transfers (id, token_hash, status, created_at, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
+                VALUES (?, ?, 'active', ?, ?, ?, 1, ?, 0, 5, ?)
                 ON CONFLICT(id) DO UPDATE SET total_size = total_size + excluded.total_size, file_count = file_count + 1
-            """, (transfer_id, hash_token(owner_token), expires_at.isoformat(), original_size, sharing_mode, burn_on_read))
+            """, (transfer_id, hash_token(owner_token), created_at_iso, expires_at_iso, original_size, sharing_mode, burn_on_read))
 
             # Insert file metadata
             conn.execute("""
                 INSERT INTO files (id, transfer_id, filename, original_name, original_size, encrypted_size,
-                                  mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read, status, access_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)
+                                  mime_type, created_at, expires_at, download_count, max_downloads, iv, salt, compressed, checksum, burn_on_read, status, access_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'ready', ?)
             """, (
                 file_id, transfer_id, file_obj.filename or "file.encrypted", original_name, original_size, encrypted_size,
-                file_obj.content_type or "application/octet-stream", expires_at.isoformat(),
+                file_obj.content_type or "application/octet-stream", created_at_iso, expires_at_iso,
                 effective_max_downloads, iv, salt, compressed, checksum, burn_on_read, access_hash
             ))
 
@@ -98,11 +101,22 @@ class TransferService:
         finally:
             conn.close()
 
+        downloads_remaining = effective_max_downloads if effective_max_downloads > 0 else None
+
         return {
             "file_id": file_id,
             "transfer_id": transfer_id,
             "share_url": f"/download/{file_id}",
-            "expires_at": expires_at.isoformat(),
+            "created_at": created_at_iso,
+            "createdAt": created_at_iso,
+            "expires_at": expires_at_iso,
+            "expiresAt": expires_at_iso,
+            "download_count": 0,
+            "downloadCount": 0,
+            "max_downloads": effective_max_downloads,
+            "maxDownloads": effective_max_downloads,
+            "downloads_remaining": downloads_remaining,
+            "downloadsRemaining": downloads_remaining,
             "refresh_count": 0,
             "max_refreshes": MAX_REFRESHES_PER_SESSION,
             "qr_data": file_id,
@@ -129,35 +143,49 @@ class TransferService:
         file_id = generate_id()
         transfer_id = transfer_id or file_id
         owner_token = generate_owner_token()
-        expires_at = get_utc_now() + timedelta(seconds=form_data["expiry_seconds"])
+        now_utc = get_utc_now()
+        created_at_iso = now_utc.isoformat()
+        expires_at = now_utc + timedelta(seconds=form_data["expiry_seconds"])
+        expires_at_iso = expires_at.isoformat()
         effective_max_downloads = max_downloads
 
         conn = self.db.get_connection()
         try:
             conn.execute("""
-                INSERT INTO transfers (id, token_hash, status, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
-                VALUES (?, ?, 'uploading', ?, ?, 1, ?, 0, 5, ?)
+                INSERT INTO transfers (id, token_hash, status, created_at, expires_at, total_size, file_count, sharing_mode, refresh_count, max_refreshes, burn_on_read)
+                VALUES (?, ?, 'uploading', ?, ?, ?, 1, ?, 0, 5, ?)
                 ON CONFLICT(id) DO UPDATE SET total_size = total_size + excluded.total_size, file_count = file_count + 1
-            """, (transfer_id, hash_token(owner_token), expires_at.isoformat(), original_size, sharing_mode, burn_on_read))
+            """, (transfer_id, hash_token(owner_token), created_at_iso, expires_at_iso, original_size, sharing_mode, burn_on_read))
 
             conn.execute("""
                 INSERT INTO files (id, transfer_id, filename, original_name, original_size, encrypted_size,
-                                  mime_type, expires_at, max_downloads, iv, salt, compressed, checksum, burn_on_read, status, access_hash)
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', ?)
+                                  mime_type, created_at, expires_at, download_count, max_downloads, iv, salt, compressed, checksum, burn_on_read, status, access_hash)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'uploading', ?)
             """, (
                 file_id, transfer_id, filename or "file.encrypted", original_name, original_size,
-                content_type or "application/octet-stream", expires_at.isoformat(),
+                content_type or "application/octet-stream", created_at_iso, expires_at_iso,
                 effective_max_downloads, iv, salt, compressed, checksum, burn_on_read, access_hash
             ))
             conn.commit()
         finally:
             conn.close()
 
+        downloads_remaining = effective_max_downloads if effective_max_downloads > 0 else None
+
         return {
             "file_id": file_id,
             "transfer_id": transfer_id,
             "share_url": f"/download/{file_id}",
-            "expires_at": expires_at.isoformat(),
+            "created_at": created_at_iso,
+            "createdAt": created_at_iso,
+            "expires_at": expires_at_iso,
+            "expiresAt": expires_at_iso,
+            "download_count": 0,
+            "downloadCount": 0,
+            "max_downloads": effective_max_downloads,
+            "maxDownloads": effective_max_downloads,
+            "downloads_remaining": downloads_remaining,
+            "downloadsRemaining": downloads_remaining,
             "owner_token": owner_token,
             "refresh_count": 0,
             "max_refreshes": MAX_REFRESHES_PER_SESSION,
@@ -224,11 +252,24 @@ class TransferService:
             conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
             conn.commit()
 
+            max_d = row["max_downloads"]
+            dl_count = row["download_count"] or 0
+            downloads_remaining = max(0, max_d - dl_count) if (max_d is not None and max_d > 0) else None
+
             return {
                 "file_id": file_id,
                 "transfer_id": transfer_id,
                 "share_url": f"/download/{file_id}",
+                "created_at": row["created_at"],
+                "createdAt": row["created_at"],
                 "expires_at": row["expires_at"],
+                "expiresAt": row["expires_at"],
+                "download_count": dl_count,
+                "downloadCount": dl_count,
+                "max_downloads": max_d,
+                "maxDownloads": max_d,
+                "downloads_remaining": downloads_remaining,
+                "downloadsRemaining": downloads_remaining,
                 "refresh_count": t_row["refresh_count"],
                 "max_refreshes": t_row["max_refreshes"],
                 "qr_data": file_id,
@@ -314,12 +355,14 @@ class TransferService:
             if not row:
                 raise NotFoundError("Transfer not found or expired")
 
-            now_iso = get_utc_now().isoformat()
-            if row["expires_at"] and row["expires_at"] <= now_iso:
+            if is_expired(row["expires_at"]):
                 raise GoneError("This file is no longer available because the sharing time limit has expired.")
 
             if row["status"] == "burned":
-                raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+                if bool(row["burn_on_read"]):
+                    raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+                else:
+                    raise GoneError("The download limit has been reached. This file is no longer available.")
 
             if bool(row["burn_on_read"]) and row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
                 raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
@@ -341,12 +384,19 @@ class TransferService:
                 "encrypted_size": row["encrypted_size"],
                 "mime_type": row["mime_type"],
                 "created_at": row["created_at"],
+                "createdAt": row["created_at"],
                 "expires_at": row["expires_at"],
+                "expiresAt": row["expires_at"],
                 "download_count": row["download_count"],
+                "downloadCount": row["download_count"],
                 "max_downloads": row["max_downloads"],
+                "maxDownloads": row["max_downloads"],
                 "downloads_remaining": downloads_remaining,
+                "downloadsRemaining": downloads_remaining,
                 "compressed": bool(row["compressed"]),
                 "burn_on_read": bool(row["burn_on_read"]),
+                "burnOnRead": bool(row["burn_on_read"]),
+                "status": row["status"] or "ready",
                 "iv": row["iv"],
                 "salt": row["salt"],
                 "checksum": row["checksum"] or ""
@@ -371,12 +421,14 @@ class TransferService:
             if not row:
                 raise NotFoundError("File not found or expired")
 
-            now_iso = get_utc_now().isoformat()
-            if row["expires_at"] and row["expires_at"] <= now_iso:
+            if is_expired(row["expires_at"]):
                 raise GoneError("This file is no longer available because the sharing time limit has expired.")
 
             if row["status"] == "burned":
-                raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+                if bool(row["burn_on_read"]):
+                    raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
+                else:
+                    raise GoneError("The download limit has been reached. This file is no longer available.")
 
             if bool(row["burn_on_read"]) and row["max_downloads"] > 0 and row["download_count"] >= row["max_downloads"]:
                 raise GoneError("This file is no longer available. It was protected with Burn After Read and has self-destructed.")
@@ -426,7 +478,8 @@ class TransferService:
     def record_successful_download(self, file_id: str) -> bool:
         """
         Atomically records a completed, successful download.
-        Purges file if max_downloads or burn_on_read threshold is reached.
+        Purges file ciphertext if max_downloads or burn_on_read threshold is reached,
+        while maintaining the status record in SQLite so subsequent requests return precise 410 messages.
         Returns True if burned/purged, False otherwise.
         """
         conn = self.db.get_connection()
@@ -460,7 +513,7 @@ class TransferService:
             conn.close()
 
         if should_purge:
-            self.purge_file(file_id)
+            self.storage.delete_file(file_id)
         return should_purge
 
     # ─── Purge / delete ─────────────────────────────────────────────────────

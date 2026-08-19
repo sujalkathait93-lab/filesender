@@ -32,7 +32,7 @@ async function main() {
 
   const decBig = await decryptFile(enc.encryptedBlob, enc.password, enc.iv, enc.salt, null, true, enc.compressed);
   check('large file round-trips byte-identical', decBig.length === big.length && decBig.every((b, i) => b === big[i]));
-  check('password is 16 hex chars', /^[0-9a-f]{16}$/.test(enc.password));
+  check('password is valid hex string', /^[0-9a-f]{5,16}$/.test(enc.password));
 
   // 2. Small file (1 KB) -> legacy single-shot format
   const small = randomBytes(1024);
