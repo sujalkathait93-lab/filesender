@@ -36,15 +36,6 @@ export function DownloadFileCard({
   if (!fileInfo) return null;
 
   const isBurn = Boolean(fileInfo.burnOnRead ?? fileInfo.burn_on_read) || fileInfo.maxDownloads === 1 || fileInfo.max_downloads === 1;
-  const maxDownloads = Number(fileInfo.maxDownloads ?? fileInfo.max_downloads ?? 10);
-  const downloadCount = Number(fileInfo.downloadCount ?? fileInfo.download_count ?? 0);
-  const remainingDownloads = fileInfo.downloadsRemaining !== undefined && fileInfo.downloadsRemaining !== null
-    ? fileInfo.downloadsRemaining
-    : fileInfo.downloads_remaining !== undefined && fileInfo.downloads_remaining !== null
-    ? fileInfo.downloads_remaining
-    : maxDownloads > 0
-    ? Math.max(0, maxDownloads - downloadCount)
-    : null;
 
   const expiresAtVal = fileInfo.expiresAt || fileInfo.expires_at;
   const expiresTimestamp = expiresAtVal ? new Date(expiresAtVal).getTime() : 0;
@@ -53,16 +44,6 @@ export function DownloadFileCard({
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   const isExpired = remainingMillis <= 0;
-
-  const getStatusText = () => {
-    if (isBurn) {
-      return '1 download remaining (Burn After Read)';
-    }
-    if (maxDownloads === 0) {
-      return 'Unlimited downloads until expiry';
-    }
-    return `${downloadCount} of ${maxDownloads} used (${remainingDownloads} remaining)`;
-  };
 
   return (
     <div className="file-info animate-in" role="region" aria-label="Transfer Verification & Details">
@@ -76,7 +57,7 @@ export function DownloadFileCard({
           <p className="file-details-meta">
             <span className="file-size-badge">{formatBytes(fileInfo.original_size)}</span>
             <span className="dot-sep">•</span>
-            <span>Zero-Knowledge AES-256</span>
+            <span>Zero-Knowledge AES-256-GCM</span>
           </p>
         </div>
       </div>
@@ -88,8 +69,10 @@ export function DownloadFileCard({
           <span className="telemetry-val">{formatBytes(fileInfo.original_size)}</span>
         </div>
         <div className="telemetry-card">
-          <span className="telemetry-label">Download Policy</span>
-          <span className="telemetry-val">{getStatusText()}</span>
+          <span className="telemetry-label">Encryption</span>
+          <span className="telemetry-val text-success">
+            <ShieldCheck size={13} /> AES-256-GCM
+          </span>
         </div>
         <div className="telemetry-card">
           <span className="telemetry-label">Time Remaining</span>
@@ -98,7 +81,7 @@ export function DownloadFileCard({
           </span>
         </div>
         <div className="telemetry-card">
-          <span className="telemetry-label">Encryption Seal</span>
+          <span className="telemetry-label">Security Seal</span>
           <span className="telemetry-val text-success">
             <ShieldCheck size={13} /> Verified E2E
           </span>

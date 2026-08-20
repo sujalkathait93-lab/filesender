@@ -40,8 +40,8 @@ export function DropZone({
       <h3>{files.length > 0 ? `${files.length} file(s) selected` : 'Choose files or drag here'}</h3>
       <p>
         {files.length > 0
-          ? `${formatBytes(totalSelectedSize)} selected • ${files.length} item(s)`
-          : 'Select single or multiple files • Up to 1 GB per file'}
+          ? `${formatBytes(totalSelectedSize)} selected • ${files.length} of max 20 file(s)`
+          : 'Select up to 20 files • Up to 1 GB total'}
       </p>
       <input
         ref={fileInputRef}

@@ -75,22 +75,12 @@ export function TransferConfirmModal({
             <label>Sharing Mode</label>
             <span>
               {useSteganography && burnOnRead
-                ? 'Burn-on-Read + Steganography'
+                ? 'Burn-on-Read (Self-Destruct) + Steganography'
                 : useSteganography
                 ? 'Steganography Vault'
                 : burnOnRead
-                ? 'Burn-on-Read'
+                ? 'Burn-on-Read (Self-Destruct)'
                 : 'Standard AES-256-GCM'}
-            </span>
-          </div>
-          <div className="confirmation-row">
-            <label>Download Limit</label>
-            <span>
-              {maxDownloads === 0
-                ? 'Unlimited'
-                : burnOnRead
-                ? '1 download (Burn-on-Read)'
-                : `${maxDownloads} download${maxDownloads === 1 ? '' : 's'}`}
             </span>
           </div>
           <div className="confirmation-row" style={{ borderBottom: 'none' }}>

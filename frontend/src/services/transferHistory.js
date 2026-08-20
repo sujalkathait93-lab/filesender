@@ -48,15 +48,6 @@ export function saveTransferToHistory(transfer) {
 
     const createdAt = transfer.createdAt || transfer.created_at || new Date().toISOString();
     const expiresAt = transfer.expiresAt || transfer.expires_at || null;
-    const maxDownloads = Number(transfer.maxDownloads ?? transfer.max_downloads ?? 10);
-    const downloadCount = Number(transfer.downloadCount ?? transfer.download_count ?? 0);
-    const downloadsRemaining = transfer.downloadsRemaining !== undefined && transfer.downloadsRemaining !== null
-      ? transfer.downloadsRemaining
-      : transfer.downloads_remaining !== undefined && transfer.downloads_remaining !== null
-      ? transfer.downloads_remaining
-      : maxDownloads > 0
-      ? Math.max(0, maxDownloads - downloadCount)
-      : null;
 
     const newRecord = {
       fileId: transfer.fileId,
@@ -66,12 +57,9 @@ export function saveTransferToHistory(transfer) {
       fileCount: transfer.fileCount || 1,
       createdAt,
       expiresAt,
-      maxDownloads,
       burnOnRead: Boolean(transfer.burnOnRead ?? transfer.burn_on_read),
       ownerToken: transfer.ownerToken || transfer.owner_token || null,
       status: transfer.status || 'active', // 'active' | 'cancelled' | 'expired' | 'completed'
-      downloadCount,
-      downloadsRemaining,
     };
 
     const updated = [newRecord, ...filtered].slice(0, MAX_HISTORY_ITEMS);

@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Clock, Key, Copy, Trash2, CheckCircle2, AlertCircle,
-  Flame, HardDrive, RefreshCw, Eye, ShieldCheck, ChevronRight, Users
+  Clock, Key, Copy, Trash2, CheckCircle2,
+  Flame, HardDrive, Eye
 } from 'lucide-react';
 import { formatBytes } from '../../utils/format';
 import { copyToClipboard } from '../../utils/clipboard';
-import { parseTransferCode, computeAccessProof } from '../../crypto';
 import { api } from '../../services/api';
 import { getSenderHistory, removeTransferFromHistory, updateTransferInHistory, clearAllTransferHistory } from '../../services/transferHistory';
 
 /**
  * SenderHistoryDashboard Component
- * Primary Responsibility: Display sender's transfer hub, monitoring live download counts,
- * active countdown timers, remaining downloads, and quick delete/cancel controls.
+ * Primary Responsibility: Display sender's transfer hub, monitoring active countdown timers
+ * and providing quick code copy, QR display, and cancellation controls.
+ * Note: Users never see download counts, download history, or internal transfer statistics.
  */
 export function SenderHistoryDashboard({ onSelectTransferForQR, activeTransferId }) {
   const [history, setHistory] = useState([]);
@@ -30,52 +30,6 @@ export function SenderHistoryDashboard({ onSelectTransferForQR, activeTransferId
       setNow(Date.now());
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  // Periodic background sync of active transfer download metrics
-  useEffect(() => {
-    let mounted = true;
-    const syncActiveTransfers = async () => {
-      const currentList = getSenderHistory();
-      const activeList = currentList.filter(
-        (item) => item.status !== 'cancelled' && (!item.expiresAt || new Date(item.expiresAt).getTime() > Date.now())
-      );
-
-      for (const item of activeList) {
-        if (!mounted) break;
-        if (!item.fileId) continue;
-        const code = item.transferCode || '';
-        const parsed = parseTransferCode(code);
-        if (!parsed.key) continue;
-
-        try {
-          const proof = await computeAccessProof(parsed.key);
-          const data = await api.fileInfo(item.fileId, proof);
-          if (mounted && data) {
-            updateTransferInHistory(item.fileId, {
-              downloadCount: data.download_count ?? data.downloadCount ?? 0,
-              downloadsRemaining: data.downloads_remaining ?? data.downloadsRemaining,
-              status: data.status || 'active'
-            });
-          }
-        } catch (err) {
-          if (mounted && (err.status === 410 || (err.message && (err.message.includes('expired') || err.message.includes('limit') || err.message.includes('burned'))))) {
-            updateTransferInHistory(item.fileId, {
-              status: 'expired'
-            });
-          }
-        }
-      }
-      if (mounted) {
-        setHistory(getSenderHistory());
-      }
-    };
-
-    const syncTimer = setInterval(syncActiveTransfers, 5000);
-    return () => {
-      mounted = false;
-      clearInterval(syncTimer);
-    };
   }, []);
 
   const handleCopyCode = async (code, fileId) => {
@@ -102,7 +56,6 @@ export function SenderHistoryDashboard({ onSelectTransferForQR, activeTransferId
       reloadHistory();
     } catch (err) {
       console.warn('Could not cancel server transfer:', err);
-      // Still mark as removed locally
       updateTransferInHistory(item.fileId, { status: 'cancelled' });
       reloadHistory();
     } finally {
@@ -158,15 +111,6 @@ export function SenderHistoryDashboard({ onSelectTransferForQR, activeTransferId
           const isCancelled = item.status === 'cancelled';
           const isBurn = Boolean(item.burnOnRead ?? item.burn_on_read) || item.maxDownloads === 1;
           const isCurrent = item.fileId === activeTransferId;
-          const downloadsUsed = Number(item.downloadCount ?? item.download_count ?? 0);
-          const maxDownloads = Number(item.maxDownloads ?? item.max_downloads ?? 10);
-          const remainingDownloads = item.downloadsRemaining !== undefined && item.downloadsRemaining !== null
-            ? item.downloadsRemaining
-            : item.downloads_remaining !== undefined && item.downloads_remaining !== null
-            ? item.downloads_remaining
-            : maxDownloads > 0
-            ? Math.max(0, maxDownloads - downloadsUsed)
-            : null;
 
           return (
             <div
@@ -200,7 +144,6 @@ export function SenderHistoryDashboard({ onSelectTransferForQR, activeTransferId
                 </div>
               </div>
 
-              {/* 10-Digit Code Display & Quick Copy */}
               <div className="history-code-strip">
                 <span className="history-code-val">
                   <Key size={13} /> {item.transferCode || item.fileId}
@@ -223,25 +166,16 @@ export function SenderHistoryDashboard({ onSelectTransferForQR, activeTransferId
                 </button>
               </div>
 
-              {/* Status & Actions Footer */}
               <div className="history-card-footer">
                 <div className="history-status-pill">
                   {isCancelled ? (
                     <span className="status-text text-muted">Deleted from server</span>
                   ) : isExpired ? (
-                    <span className="status-text text-muted">Auto-purged on expiry • {downloadsUsed} total downloads</span>
+                    <span className="status-text text-muted">Auto-purged on expiry</span>
                   ) : isBurn ? (
-                    <span className="status-text text-warning">
-                      {downloadsUsed}/1 used • {Math.max(0, 1 - downloadsUsed)} remaining (Burn on Read)
-                    </span>
-                  ) : maxDownloads === 0 ? (
-                    <span className="status-text text-success">
-                      {downloadsUsed} total downloads • Unlimited remaining
-                    </span>
+                    <span className="status-text text-warning">Active • Burn on Read</span>
                   ) : (
-                    <span className="status-text text-primary">
-                      {downloadsUsed} / {maxDownloads} total downloads ({remainingDownloads} remaining)
-                    </span>
+                    <span className="status-text text-primary">Active &amp; Ready</span>
                   )}
                 </div>
 

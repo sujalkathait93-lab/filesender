@@ -350,8 +350,6 @@ function UploadPage() {
                 setUseSteganography={setUseSteganography}
                 useP2P={useP2P}
                 setUseP2P={setUseP2P}
-                maxDownloads={maxDownloads}
-                onMaxDownloadsChange={handleMaxDownloadsChange}
                 expiryHours={expiryHours}
                 setExpiryHours={setExpiryHours}
                 isTransferring={isTransferring}
@@ -408,7 +406,6 @@ function UploadPage() {
         currentOpt={currentOpt}
         useSteganography={useSteganography}
         burnOnRead={burnOnRead}
-        maxDownloads={maxDownloads}
         expiryHours={expiryHours}
       />
 

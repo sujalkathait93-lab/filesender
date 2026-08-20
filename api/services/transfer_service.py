@@ -15,9 +15,9 @@ from datetime import timedelta
 
 from api.database import DatabaseManager
 from api.storage import StorageManager
-from api.config import MAX_FILE_SIZE, MAX_REFRESHES_PER_SESSION, MAX_PREVIEWS_PER_FILE
+from api.config import MAX_FILE_SIZE, MAX_SYSTEM_USERS, MAX_FILES_PER_TRANSFER, MAX_REFRESHES_PER_SESSION, MAX_PREVIEWS_PER_FILE
 from api.utils import generate_id, generate_owner_token, hash_token, tokens_match, proofs_match, get_utc_now, get_utc_now_iso, is_expired
-from api.errors import NotFoundError, GoneError, ConflictError, ForbiddenError, ValidationError
+from api.errors import ApiError, NotFoundError, GoneError, ConflictError, ForbiddenError, ValidationError
 
 MAX_ALLOWED_ENCRYPTED = MAX_FILE_SIZE + 64 * 1024 * 1024  # 1 GB + overhead
 
@@ -29,6 +29,26 @@ class TransferService:
         self.db = db_manager
         self.storage = storage_manager
 
+    def _check_system_user_capacity(self, transfer_id: str = None):
+        """Limit system to MAX_SYSTEM_USERS (20) concurrent active transfers/users."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT COUNT(DISTINCT id) as count FROM transfers WHERE status IN ('active', 'uploading', 'ready') AND (expires_at IS NULL OR expires_at > ?)",
+                (get_utc_now_iso(),)
+            )
+            row = cursor.fetchone()
+            active_count = row["count"] if row else 0
+            # If updating an existing transfer (e.g. multi-part/chunk), it's not a new session
+            if transfer_id:
+                existing = conn.execute("SELECT id FROM transfers WHERE id = ?", (transfer_id,)).fetchone()
+                if existing:
+                    return
+            if active_count >= MAX_SYSTEM_USERS:
+                raise ApiError("System user capacity reached (maximum 20 concurrent users). Please try again shortly.", 429)
+        finally:
+            conn.close()
+
     # ─── Upload (Single Shot) ───────────────────────────────────────────────
 
     def upload_file(self, file_obj, form_data: dict) -> dict:
@@ -37,6 +57,13 @@ class TransferService:
         form_data must already be validated (see api.validation).
         Returns dict with file_id, transfer_id, share_url, expires_at, etc.
         """
+        file_count = form_data.get("file_count", 1)
+        if file_count > MAX_FILES_PER_TRANSFER:
+            raise ValidationError(f"Maximum of {MAX_FILES_PER_TRANSFER} files allowed per transfer (got {file_count})")
+
+        transfer_id = form_data["transfer_id"]
+        self._check_system_user_capacity(transfer_id)
+
         iv = form_data["iv"]
         salt = form_data["salt"]
         original_name = form_data["original_name"]
@@ -46,7 +73,6 @@ class TransferService:
         burn_on_read = form_data["burn_on_read"]
         expiry_hours = form_data["expiry_hours"]
         sharing_mode = form_data["sharing_mode"]
-        transfer_id = form_data["transfer_id"]
         checksum = (form_data.get("checksum") or "").strip()[:64]
         access_hash = form_data["access_hash"]
 
@@ -127,6 +153,13 @@ class TransferService:
 
     def init_chunked_upload(self, form_data: dict, filename: str = "", content_type: str = "") -> dict:
         """Initialize a multi-chunk upload session."""
+        file_count = form_data.get("file_count", 1)
+        if file_count > MAX_FILES_PER_TRANSFER:
+            raise ValidationError(f"Maximum of {MAX_FILES_PER_TRANSFER} files allowed per transfer (got {file_count})")
+
+        transfer_id = form_data["transfer_id"]
+        self._check_system_user_capacity(transfer_id)
+
         iv = form_data["iv"]
         salt = form_data["salt"]
         original_name = form_data["original_name"]
@@ -136,7 +169,6 @@ class TransferService:
         burn_on_read = form_data["burn_on_read"]
         expiry_hours = form_data["expiry_hours"]
         sharing_mode = form_data["sharing_mode"]
-        transfer_id = form_data["transfer_id"]
         checksum = (form_data.get("checksum") or "").strip()[:64]
         access_hash = form_data["access_hash"]
 

@@ -12,7 +12,7 @@ export { detectFileType, CATEGORY_DETECTORS } from './utils/fileType.js';
 export { packFiles, unpackFiles, isBundleData, BUNDLE_MAGIC } from './utils/bundler.js';
 
 // Selection & size validation
-export { validateFiles, MAX_TOTAL_TRANSFER_SIZE } from './utils/fileValidator.js';
+export { validateFiles, MAX_TOTAL_TRANSFER_SIZE, MAX_FILES_PER_TRANSFER } from './utils/fileValidator.js';
 
 // File size tier & guidance
 export { getFileSizeTier } from './utils/fileTier.js';

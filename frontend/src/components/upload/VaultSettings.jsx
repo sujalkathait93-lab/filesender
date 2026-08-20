@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Flame, Image as ImageIcon, Radio, Users, Clock, HelpCircle, ChevronDown, ChevronUp, Info, Check } from 'lucide-react';
+import { Flame, Image as ImageIcon, Radio, Clock, HelpCircle, ChevronDown, ChevronUp, Info } from 'lucide-react';
 
 /**
  * VaultSettings Component
- * Primary Responsibility: Handle security & privacy toggles: Burn-on-Read, Steganography, Direct P2P, Download limits, and TTL expiry.
+ * Primary Responsibility: Handle security & privacy toggles: Burn-on-Read, Steganography, Direct P2P, and TTL expiry.
+ * Note: Users never see download counts, download history, or internal transfer statistics.
  */
 export function VaultSettings({
   burnOnRead,
@@ -12,8 +13,6 @@ export function VaultSettings({
   setUseSteganography,
   useP2P,
   setUseP2P,
-  maxDownloads,
-  onMaxDownloadsChange,
   expiryHours,
   setExpiryHours,
   isTransferring,
@@ -38,7 +37,7 @@ export function VaultSettings({
         </button>
       </div>
 
-      {/* Option 1: Burn-on-Read (Point-Wise Explanation) */}
+      {/* Option 1: Burn-on-Read (Self-Destruct) */}
       <div
         className={`vault-option-card ${burnOnRead ? 'active' : ''}`}
         onClick={() => !isTransferring && onBurnToggle()}
@@ -55,10 +54,10 @@ export function VaultSettings({
             <div>
               <div className="option-card__title-row">
                 <strong className="option-card__title">Burn After Read (Self-Destruct)</strong>
-                <span className="badge badge-amber">1 DOWNLOAD</span>
+                <span className="badge badge-amber">SELF-DESTRUCT</span>
               </div>
               <span className="option-card__description">
-                File becomes unavailable and permanently deleted after 1 successful download.
+                File permanently deletes and unlinks from server disk immediately once downloaded.
               </span>
             </div>
           </div>
@@ -93,15 +92,15 @@ export function VaultSettings({
               <div className="point-wise-guide">
                 <div className="guide-point">
                   <strong>What is it?</strong>
-                  <p>File becomes unavailable and permanently purged from server memory after the selected number of successful downloads.</p>
+                  <p>The encrypted file blob is permanently wiped from server storage the instant the recipient finishes downloading.</p>
                 </div>
                 <div className="guide-point">
                   <strong>Why use it?</strong>
-                  <p>Prevents continued access after the intended recipient downloads.</p>
+                  <p>Guarantees one-time delivery and ensures no residual data remains on any server.</p>
                 </div>
                 <div className="guide-point">
                   <strong>Important:</strong>
-                  <p>Only successful, 100% completed downloads reduce the count. Incomplete or preview downloads never burn the file.</p>
+                  <p>In-browser previews do not consume or burn the transfer, so recipients can safely inspect files before completing their download.</p>
                 </div>
               </div>
             </div>
@@ -185,29 +184,6 @@ export function VaultSettings({
         </div>
       </div>
 
-      {/* Download limit selection (1, 5, 10, 30, 60, 100, Unlimited) */}
-      <div className="expiry-row">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Users size={16} className="field-icon" />
-          <label htmlFor="downloads-select">Download Limit</label>
-        </div>
-        <select
-          id="downloads-select"
-          value={maxDownloads}
-          disabled={isTransferring}
-          onChange={(e) => onMaxDownloadsChange(e.target.value)}
-          aria-label="Select maximum download limit"
-        >
-          <option value={1}>1 download (Burn on read)</option>
-          <option value={5}>5 downloads</option>
-          <option value={10}>10 downloads (Standard)</option>
-          <option value={30}>30 downloads</option>
-          <option value={60}>60 downloads</option>
-          <option value={100}>100 downloads</option>
-          <option value={0}>Unlimited (until expiry)</option>
-        </select>
-      </div>
-
       {/* Expiry Countdown selection (15s up to 3 min / 180s) */}
       <div className="expiry-row">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -232,3 +208,5 @@ export function VaultSettings({
     </div>
   );
 }
+
+export default VaultSettings;

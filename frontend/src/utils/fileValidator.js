@@ -6,14 +6,24 @@
 import { SmartTransferOptimizer, MAX_FILE_SIZE_BYTES } from '../services/smartTransferOptimizer.js';
 
 export const MAX_TOTAL_TRANSFER_SIZE = MAX_FILE_SIZE_BYTES; // 1 GB
+export const MAX_FILES_PER_TRANSFER = 20; // Maximum 20 files per transfer
 
 /**
- * Validate a selection of files against size limits (1 GB max per individual file & total).
+ * Validate a selection of files against size limits (1 GB max per individual file & total) and file count (max 20).
  */
-export function validateFiles(files, maxTotalLimit = MAX_TOTAL_TRANSFER_SIZE) {
+export function validateFiles(files, maxTotalLimit = MAX_TOTAL_TRANSFER_SIZE, maxFilesLimit = MAX_FILES_PER_TRANSFER) {
   const fileArray = Array.from(files || []);
   if (fileArray.length === 0) {
     return { valid: false, totalSize: 0, error: 'No files selected', files: [] };
+  }
+
+  if (maxFilesLimit && maxFilesLimit > 0 && fileArray.length > maxFilesLimit) {
+    return {
+      valid: false,
+      totalSize: 0,
+      error: `Maximum of ${maxFilesLimit} files allowed per transfer (selected ${fileArray.length} files).`,
+      files: fileArray
+    };
   }
 
   let totalSize = 0;

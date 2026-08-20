@@ -9,7 +9,7 @@ which made mistakes invisible).
 
 import re
 
-from api.config import MAX_FILE_SIZE
+from api.config import MAX_FILE_SIZE, MAX_FILES_PER_TRANSFER
 from api.errors import ValidationError
 
 # 4-32 hex chars (supports 5-char 10-digit transfer codes, 8-char legacy, 10-char, 16-char, 32-char)
@@ -91,11 +91,14 @@ def validate_upload_form(form: dict) -> dict:
         )
         expiry_seconds = int(expiry_hours * 3600)
 
+    file_count = _to_int(form.get("file_count"), 1, 1, MAX_FILES_PER_TRANSFER, "file_count")
+
     return {
         "iv": iv.lower(),
         "salt": salt.lower(),
         "original_name": original_name,
         "original_size": original_size,
+        "file_count": file_count,
         "compressed": _to_int(form.get("compressed"), 1, 0, 1, "compressed"),
         "max_downloads": max_downloads,
         "burn_on_read": burn_on_read,

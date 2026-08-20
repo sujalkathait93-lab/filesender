@@ -49,6 +49,15 @@ async function runTests() {
   const v2 = validateFiles(oversizedFiles, 0);
   check('over 1 GB rejected', v2.valid === false && v2.error.includes('exceeds'));
 
+  // 20-file limit tests
+  const files20 = Array.from({ length: 20 }, (_, i) => ({ name: `f${i}.txt`, size: 1024 }));
+  const v20 = validateFiles(files20);
+  check('20 files selection passes', v20.valid === true);
+
+  const files21 = Array.from({ length: 21 }, (_, i) => ({ name: `f${i}.txt`, size: 1024 }));
+  const v21 = validateFiles(files21);
+  check('21 files selection rejected (>20 files)', v21.valid === false && v21.error.includes('Maximum of 20 files'));
+
   // Smart Transfer Optimization Tiers (0 to 1 GB)
   check('tier: empty', getFileSizeTier(0).tier === 'empty');
   check('tier: tiny (<1 MB)', getFileSizeTier(500 * 1024).tier === 'tiny' && getFileSizeTier(500 * 1024).stegoRecommended === true);

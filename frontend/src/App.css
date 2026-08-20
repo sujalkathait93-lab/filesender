@@ -5634,5 +5634,64 @@ button, a, input, select, textarea {
   color: var(--fg-default);
 }
 
+.sender-dashboard-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-4);
+}
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Responsive Optimization (Desktop, iOS Safari, Android Chrome)
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Prevent iOS Safari auto-zoom on input focus by guaranteeing 16px font */
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="email"],
+  select,
+  textarea,
+  .code-input-single,
+  .manual-key-input {
+    font-size: 16px !important;
+  }
 
+  .sender-dashboard-grid-4,
+  .sender-dashboard-grid-7 {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-telemetry-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+
+  .mobile-bottom-nav {
+    padding-bottom: max(var(--space-2), env(safe-area-inset-bottom, 16px));
+  }
+
+  .preview-modal {
+    max-height: 92vh;
+    max-height: 92dvh;
+    margin: var(--space-2);
+    width: calc(100% - var(--space-4));
+  }
+
+  .preview-body {
+    max-height: calc(92dvh - 120px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .btn {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .app-footer {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 16px));
+  }
+}

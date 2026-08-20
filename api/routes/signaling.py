@@ -8,6 +8,7 @@ import re
 import threading
 from flask import request
 from flask_socketio import SocketIO, join_room, leave_room, emit
+from api.config import MAX_SYSTEM_USERS
 
 _rooms_lock = threading.Lock()
 active_rooms = {}
@@ -39,6 +40,13 @@ def register_signaling_handlers(socketio: SocketIO):
             return
 
         with _rooms_lock:
+            # Enforce system limit of 20 concurrent users across signaling
+            total_active_peers = sum(len(r.get("members", [])) for r in active_rooms.values())
+            is_existing_member = any(request.sid in r.get("members", []) for r in active_rooms.values())
+            if not is_existing_member and total_active_peers >= MAX_SYSTEM_USERS:
+                emit("room_full", {"room": room, "reason": "system_capacity_reached", "max_users": MAX_SYSTEM_USERS})
+                return
+
             if room not in active_rooms:
                 active_rooms[room] = {"members": [], "meta": None}
 

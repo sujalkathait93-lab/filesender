@@ -24,6 +24,7 @@ export function isBundleData(uint8Array) {
 export async function packFiles(files) {
   const fileArray = Array.from(files || []);
   if (fileArray.length === 0) throw new Error('No files to package');
+  if (fileArray.length > 20) throw new Error('Maximum of 20 files allowed per transfer');
 
   if (fileArray.length === 1) {
     return {
